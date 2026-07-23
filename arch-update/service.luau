@@ -18,6 +18,7 @@ local UPDATE_WAIT = 30
 local isChecking = false
 local isUpdating = false
 local pendingCheck = false
+local updateStartTime = 0
 
 -- Detect package managers
 local function findBin(name)
@@ -94,6 +95,7 @@ state.watch("update_request", function(value)
     if cmd == "update_pacman" then
         if isUpdating then return end
         isUpdating = true
+        updateStartTime = os.time()
         noctalia.runInTerminal("sudo pacman -Syu --noconfirm")
         noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
             isUpdating = false
@@ -102,6 +104,7 @@ state.watch("update_request", function(value)
     elseif cmd == "update_aur" then
         if isUpdating or not aurHelper then return end
         isUpdating = true
+        updateStartTime = os.time()
         noctalia.runInTerminal(aurHelper .. " -Sua --noconfirm")
         noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
             isUpdating = false
@@ -110,6 +113,7 @@ state.watch("update_request", function(value)
     elseif cmd == "update_flatpak" then
         if isUpdating or not flatpakInstalled then return end
         isUpdating = true
+        updateStartTime = os.time()
         noctalia.runInTerminal("flatpak update -y")
         noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
             isUpdating = false
@@ -118,6 +122,7 @@ state.watch("update_request", function(value)
     elseif cmd == "update_all" then
         if isUpdating then return end
         isUpdating = true
+        updateStartTime = os.time()
         local commands = { "sudo pacman -Syu --noconfirm" }
         if aurHelper then
             table.insert(commands, aurHelper .. " -Sua --noconfirm")
@@ -173,8 +178,11 @@ function checkUpdates()
     if flatpakInstalled then expectedCount += 1 end
 
     local completed = 0
+    local aggregated = false
 
     local function aggregateResults()
+        if aggregated then return end
+        aggregated = true
         state.set("pacman_count", pacmanCount)
         state.set("aur_count", aurCount)
         state.set("flatpak_count", flatpakCount)
@@ -266,5 +274,10 @@ end
 
 function update()
     noctalia.setUpdateInterval(checkInterval)
+    -- Safety: reset stuck update state if callback never fired
+    if isUpdating and os.time() - updateStartTime > UPDATE_WAIT * 2 then
+        noctalia.log("Safety: resetting stuck update state")
+        isUpdating = false
+    end
     checkUpdates()
 end

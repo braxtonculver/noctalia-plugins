@@ -23,6 +23,7 @@ local enableFlatpak = noctalia.getConfig("enable_flatpak")
 if enableFlatpak == nil then enableFlatpak = true end
 local showAll = false
 local searchText = ""
+local render -- forward declaration
 
 state.watch("total_count", function(v)
     totalCount = v or 0
@@ -30,24 +31,31 @@ state.watch("total_count", function(v)
 end)
 state.watch("pacman_count", function(v)
     pacmanCount = v or 0
+    render()
 end)
 state.watch("aur_count", function(v)
     aurCount = v or 0
+    render()
 end)
 state.watch("flatpak_count", function(v)
     flatpakCount = v or 0
+    render()
 end)
 state.watch("pacman_packages", function(v)
     pacmanPackages = v or {}
+    render()
 end)
 state.watch("aur_packages", function(v)
     aurPackages = v or {}
+    render()
 end)
 state.watch("flatpak_packages", function(v)
     flatpakPackages = v or {}
+    render()
 end)
 state.watch("last_checked", function(v)
     lastChecked = v
+    render()
 end)
 state.watch("checking", function(v)
     isChecking = v or false
@@ -185,7 +193,7 @@ local function managerSection(title, count, glyph, color, hasHelper, disabledLab
     }, elements)
 end
 
-local function render()
+render = function()
     local hasUpdates = totalCount > 0
 
     -- Status section
@@ -333,10 +341,21 @@ local function render()
     local searchSection = nil
     if hasUpdates then
         searchSection = ui.input({
+            key = "search",
             placeholder = noctalia.tr("panel.search"),
             controlSize = "sm",
             onChange = "onSearchChanged",
         })
+    end
+
+    -- Build scroll children (omit nil sections)
+    local scrollChildren = { statusSection }
+    if searchSection then
+        table.insert(scrollChildren, searchSection)
+    end
+    table.insert(scrollChildren, managerSections)
+    if errorSection then
+        table.insert(scrollChildren, errorSection)
     end
 
     -- Assemble the full panel
@@ -360,12 +379,7 @@ local function render()
         }),
 
         -- Scrollable body
-        ui.scroll({ flexGrow = 1, gap = 8 }, {
-            statusSection,
-            searchSection or ui.column({}),
-            managerSections,
-            errorSection or ui.column({}),
-        }),
+        ui.scroll({ flexGrow = 1, gap = 8 }, scrollChildren),
 
         -- Footer
         ui.row({ align = "center", justify = "space_between", gap = 8 }, {
