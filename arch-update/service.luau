@@ -154,7 +154,7 @@ function checkUpdates()
     end
 
     -- Safety timeout: if any check hangs, force completion
-    local safetyTimer = false
+    local safetyTimer = true
     noctalia.runAsync("sleep 45", function()
         if not safetyTimer then return end
         safetyTimer = false

@@ -51,9 +51,11 @@ state.watch("last_checked", function(v)
 end)
 state.watch("checking", function(v)
     isChecking = v or false
+    render()
 end)
 state.watch("error", function(v)
     errorMsg = v
+    render()
 end)
 
 local function formatTime(unixTime)
@@ -405,11 +407,9 @@ function onOpen(_context)
 end
 
 function onRefreshClicked()
-    state.set("checking", true)
     isChecking = true
     render()
     state.set("refresh_request", os.time())
-    noctalia.runAsync("noctalia msg plugin braxtonculver/arch-update:checker all check")
 end
 
 function onUpdatePacman()

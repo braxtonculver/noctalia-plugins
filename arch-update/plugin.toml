@@ -1,6 +1,6 @@
 id = "braxtonculver/arch-update"
 name = "Arch Updater"
-version = "2.2.1"
+version = "2.2.2"
 plugin_api = 3
 author = "braxtonculver"
 license = "MIT"
