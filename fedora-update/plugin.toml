@@ -1,0 +1,57 @@
+id = "braxtonculver/fedora-update"
+name = "Fedora Updater"
+version = "1.0.0"
+plugin_api = 3
+author = "braxtonculver"
+license = "MIT"
+dependencies = []
+tags = ["system", "utility", "fedora", "dnf", "indicator"]
+icon = "refresh"
+description = "Automatic system updater for Fedora (dnf) and flatpak with update count display."
+
+[[setting]]
+key = "check_interval"
+type = "int"
+label_key = "settings.check_interval.label"
+description_key = "settings.check_interval.description"
+default = 360
+min = 5
+max = 1440
+
+[[setting]]
+key = "enable_flatpak"
+type = "bool"
+label_key = "settings.enable_flatpak.label"
+description_key = "settings.enable_flatpak.description"
+default = true
+
+[[widget]]
+id = "status"
+entry = "widget.luau"
+label = "Fedora Updater"
+
+  [[widget.setting]]
+  key = "show_count"
+  type = "bool"
+  label_key = "settings.show_count.label"
+  description_key = "settings.show_count.description"
+  default = true
+
+  [[widget.setting]]
+  key = "icon_glyph"
+  type = "glyph"
+  label_key = "settings.icon_glyph.label"
+  description_key = "settings.icon_glyph.description"
+  default = "refresh"
+
+[[service]]
+id = "checker"
+entry = "service.luau"
+
+[[panel]]
+id = "updates"
+entry = "panel.luau"
+width = 440
+height = 560
+placement = "floating"
+position = "center"
