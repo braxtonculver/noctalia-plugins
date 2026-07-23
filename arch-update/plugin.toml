@@ -1,6 +1,6 @@
 id = "braxtonculver/arch-update"
 name = "Arch Updater"
-version = "2.2.2"
+version = "2.3.0"
 plugin_api = 3
 author = "braxtonculver"
 license = "MIT"
@@ -47,6 +47,7 @@ default = true
 [[widget]]
 id = "status"
 entry = "widget.luau"
+label = "Arch Updater"
 
   [[widget.setting]]
   key = "show_count"

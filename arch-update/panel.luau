@@ -413,19 +413,19 @@ function onRefreshClicked()
 end
 
 function onUpdatePacman()
-    noctalia.runAsync("noctalia msg plugin braxtonculver/arch-update:checker all update_pacman")
+    state.set("update_request", { command = "update_pacman", ts = os.time() })
 end
 
 function onUpdateAur()
-    noctalia.runAsync("noctalia msg plugin braxtonculver/arch-update:checker all update_aur")
+    state.set("update_request", { command = "update_aur", ts = os.time() })
 end
 
 function onUpdateFlatpak()
-    noctalia.runAsync("noctalia msg plugin braxtonculver/arch-update:checker all update_flatpak")
+    state.set("update_request", { command = "update_flatpak", ts = os.time() })
 end
 
 function onUpdateAll()
-    noctalia.runAsync("noctalia msg plugin braxtonculver/arch-update:checker all update_all")
+    state.set("update_request", { command = "update_all", ts = os.time() })
 end
 
 function onShowAll()

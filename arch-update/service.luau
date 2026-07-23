@@ -13,7 +13,6 @@ if enableAur == nil then enableAur = true end
 local enableFlatpak = noctalia.getConfig("enable_flatpak")
 if enableFlatpak == nil then enableFlatpak = true end
 local aurHelperChoice = noctalia.getConfig("aur_helper") or "auto"
-local SAFETY_TIMEOUT = 45000
 local UPDATE_WAIT = 30
 
 local isChecking = false
@@ -79,6 +78,58 @@ state.watch("refresh_request", function(timestamp)
     if timestamp ~= nil and timestamp ~= lastRefreshRequest then
         lastRefreshRequest = timestamp
         checkUpdates()
+    end
+end)
+
+-- Watch for update commands from the panel.
+local lastUpdateCmd = ""
+local lastUpdateTs = 0
+state.watch("update_request", function(value)
+    if value == nil then return end
+    local cmd = value.command or ""
+    local ts = value.ts or 0
+    if cmd == lastUpdateCmd and ts == lastUpdateTs then return end
+    lastUpdateCmd = cmd
+    lastUpdateTs = ts
+    if cmd == "update_pacman" then
+        if isUpdating then return end
+        isUpdating = true
+        noctalia.runInTerminal("sudo pacman -Syu --noconfirm")
+        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
+            isUpdating = false
+            checkUpdates()
+        end)
+    elseif cmd == "update_aur" then
+        if isUpdating or not aurHelper then return end
+        isUpdating = true
+        noctalia.runInTerminal(aurHelper .. " -Sua --noconfirm")
+        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
+            isUpdating = false
+            checkUpdates()
+        end)
+    elseif cmd == "update_flatpak" then
+        if isUpdating or not flatpakInstalled then return end
+        isUpdating = true
+        noctalia.runInTerminal("flatpak update -y")
+        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
+            isUpdating = false
+            checkUpdates()
+        end)
+    elseif cmd == "update_all" then
+        if isUpdating then return end
+        isUpdating = true
+        local commands = { "sudo pacman -Syu --noconfirm" }
+        if aurHelper then
+            table.insert(commands, aurHelper .. " -Sua --noconfirm")
+        end
+        if flatpakInstalled then
+            table.insert(commands, "flatpak update -y")
+        end
+        noctalia.runInTerminal(table.concat(commands, " ; "))
+        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
+            isUpdating = false
+            checkUpdates()
+        end)
     end
 end)
 
@@ -216,49 +267,4 @@ end
 function update()
     noctalia.setUpdateInterval(checkInterval)
     checkUpdates()
-end
-
-function onIpc(event, _payload)
-    if event == "check" then
-        checkUpdates()
-    elseif event == "update_pacman" then
-        if isUpdating then return end
-        isUpdating = true
-        noctalia.runInTerminal("sudo pacman -Syu --noconfirm")
-        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
-            isUpdating = false
-            checkUpdates()
-        end)
-    elseif event == "update_aur" then
-        if isUpdating or not aurHelper then return end
-        isUpdating = true
-        noctalia.runInTerminal(aurHelper .. " -Sua --noconfirm")
-        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
-            isUpdating = false
-            checkUpdates()
-        end)
-    elseif event == "update_flatpak" then
-        if isUpdating or not flatpakInstalled then return end
-        isUpdating = true
-        noctalia.runInTerminal("flatpak update -y")
-        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
-            isUpdating = false
-            checkUpdates()
-        end)
-    elseif event == "update_all" then
-        if isUpdating then return end
-        isUpdating = true
-        local commands = { "sudo pacman -Syu --noconfirm" }
-        if aurHelper then
-            table.insert(commands, aurHelper .. " -Sua --noconfirm")
-        end
-        if flatpakInstalled then
-            table.insert(commands, "flatpak update -y")
-        end
-        noctalia.runInTerminal(table.concat(commands, " ; "))
-        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
-            isUpdating = false
-            checkUpdates()
-        end)
-    end
 end

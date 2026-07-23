@@ -3,7 +3,7 @@
 [[plugin]]
 id = "braxtonculver/arch-update"
 name = "Arch Updater"
-version = "2.2.2"
+version = "2.3.0"
 author = "braxtonculver"
 license = "MIT"
 icon = "refresh"
