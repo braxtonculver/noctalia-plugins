@@ -1,13 +1,13 @@
 id = "braxtonculver/arch-update"
 name = "Arch Updater"
-version = "1.0.0"
+version = "2.0.0"
 plugin_api = 3
 author = "braxtonculver"
 license = "MIT"
 dependencies = []
 tags = ["system", "utility", "arch", "indicator"]
-icon = "package"
-description = "Automatic system updater for pacman, AUR helpers, and flatpak with update count display."
+icon = "package-update"
+description = "Automatic system updater for pacman, AUR helpers, and flatpak with update count display and package list."
 
 [[setting]]
 key = "check_interval"
@@ -28,6 +28,13 @@ entry = "widget.luau"
   description_key = "settings.show_count.description"
   default = true
 
+  [[widget.setting]]
+  key = "icon_glyph"
+  type = "glyph"
+  label_key = "settings.icon_glyph.label"
+  description_key = "settings.icon_glyph.description"
+  default = "package-update"
+
 [[service]]
 id = "checker"
 entry = "service.luau"
@@ -36,6 +43,6 @@ entry = "service.luau"
 id = "updates"
 entry = "panel.luau"
 width = 440
-height = 520
+height = 560
 placement = "floating"
 position = "center"

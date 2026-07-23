@@ -7,18 +7,11 @@
 -- user full visibility and control. No commands run silently.
 
 local state = noctalia.state
-local interval = (noctalia.getConfig("check_interval") or 300) * 1000
+local checkInterval = (noctalia.getConfig("check_interval") or 300) * 1000
 
-local updating = false
 local isChecking = false
-
-state.set("pacman_count", 0)
-state.set("aur_count", 0)
-state.set("flatpak_count", 0)
-state.set("total_count", 0)
-state.set("last_checked", nil)
-state.set("checking", false)
-state.set("error", nil)
+local isUpdating = false
+local pendingCheck = false
 
 local aurHelper = nil
 if noctalia.commandExists("paru") then
@@ -26,22 +19,55 @@ if noctalia.commandExists("paru") then
 elseif noctalia.commandExists("yay") then
     aurHelper = "yay"
 end
-state.set("aur_helper", aurHelper)
-state.set("flatpak_installed", noctalia.commandExists("flatpak"))
+local flatpakInstalled = noctalia.commandExists("flatpak")
 
-local function countLines(text)
+state.set("pacman_count", 0)
+state.set("aur_count", 0)
+state.set("flatpak_count", 0)
+state.set("total_count", 0)
+state.set("pacman_packages", {})
+state.set("aur_packages", {})
+state.set("flatpak_packages", {})
+state.set("last_checked", nil)
+state.set("checking", false)
+state.set("error", nil)
+state.set("aur_helper", aurHelper)
+state.set("flatpak_installed", flatpakInstalled)
+
+local function parsePackages(text)
+    local packages = {}
     if text == nil or text == "" then
-        return 0
+        return packages
     end
-    local count = 0
-    for _ in text:gmatch("[^\n]+") do
-        count += 1
+    for line in text:gmatch("[^\n]+") do
+        line = noctalia.string.trim(line)
+        if line ~= "" then
+            local name, version = line:match("^(%S+)%s+(%S+)")
+            if name then
+                table.insert(packages, { name = name, version = version })
+            end
+        end
     end
-    return count
+    return packages
 end
 
-local function checkUpdates()
-    if updating or isChecking then
+local function checkComplete(errors)
+    state.set("checking", false)
+    isChecking = false
+    if #errors > 0 then
+        state.set("error", table.concat(errors, "; "))
+    else
+        state.set("error", nil)
+    end
+    if pendingCheck then
+        pendingCheck = false
+        checkUpdates()
+    end
+end
+
+function checkUpdates()
+    if isChecking then
+        pendingCheck = true
         return
     end
     isChecking = true
@@ -51,119 +77,121 @@ local function checkUpdates()
     local pacmanCount = 0
     local aurCount = 0
     local flatpakCount = 0
+    local pacmanPackages = {}
+    local aurPackages = {}
+    local flatpakPackages = {}
     local errors = {}
 
     noctalia.runAsync("pacman -Qu 2>/dev/null", function(result)
         if result.exitCode == 0 then
-            pacmanCount = countLines(result.stdout)
+            pacmanPackages = parsePackages(result.stdout)
+            pacmanCount = #pacmanPackages
         elseif result.stdout ~= "" then
             table.insert(errors, "pacman: " .. result.stdout)
         end
 
-        local function nextStep()
-            local totalCount = pacmanCount + aurCount + flatpakCount
-            state.set("pacman_count", pacmanCount)
-            state.set("aur_count", aurCount)
-            state.set("flatpak_count", flatpakCount)
-            state.set("total_count", totalCount)
-            state.set("last_checked", os.time())
-            state.set("checking", false)
-            isChecking = false
+        local function afterAur()
+            local function afterFlatpak()
+                state.set("pacman_count", pacmanCount)
+                state.set("aur_count", aurCount)
+                state.set("flatpak_count", flatpakCount)
+                state.set("total_count", pacmanCount + aurCount + flatpakCount)
+                state.set("pacman_packages", pacmanPackages)
+                state.set("aur_packages", aurPackages)
+                state.set("flatpak_packages", flatpakPackages)
+                state.set("last_checked", os.time())
+                checkComplete(errors)
 
-            if #errors > 0 then
-                state.set("error", table.concat(errors, "; "))
-            else
-                state.set("error", nil)
+                noctalia.log(string.format(
+                    "Update check: %d pacman, %d aur, %d flatpak (%d total)",
+                    pacmanCount, aurCount, flatpakCount,
+                    pacmanCount + aurCount + flatpakCount
+                ))
             end
 
-            noctalia.log(string.format(
-                "Update check: %d pacman, %d aur, %d flatpak (%d total)",
-                pacmanCount, aurCount, flatpakCount, totalCount
-            ))
+            if flatpakInstalled then
+                noctalia.runAsync("flatpak remote-ls --updates 2>/dev/null", function(fpResult)
+                    if fpResult.exitCode == 0 then
+                        local packages = parsePackages(fpResult.stdout)
+                        flatpakCount = #packages
+                        flatpakPackages = packages
+                    end
+                    afterFlatpak()
+                end)
+            else
+                afterFlatpak()
+            end
         end
 
         if aurHelper then
             noctalia.runAsync(aurHelper .. " -Qua 2>/dev/null", function(aurResult)
                 if aurResult.exitCode == 0 then
-                    aurCount = countLines(aurResult.stdout)
+                    aurPackages = parsePackages(aurResult.stdout)
+                    aurCount = #aurPackages
                 elseif aurResult.stdout ~= "" then
                     table.insert(errors, "aur: " .. aurResult.stdout)
                 end
-
-                if state.get("flatpak_installed") then
-                    noctalia.runAsync("flatpak remote-ls --updates 2>/dev/null", function(fpResult)
-                        if fpResult.exitCode == 0 then
-                            flatpakCount = countLines(fpResult.stdout)
-                        end
-                        nextStep()
-                    end)
-                else
-                    nextStep()
-                end
-            end)
-        elseif state.get("flatpak_installed") then
-            noctalia.runAsync("flatpak remote-ls --updates 2>/dev/null", function(fpResult)
-                if fpResult.exitCode == 0 then
-                    flatpakCount = countLines(fpResult.stdout)
-                end
-                nextStep()
+                afterAur()
             end)
         else
-            nextStep()
+            afterAur()
         end
     end)
 end
 
 function update()
-    noctalia.setUpdateInterval(interval)
-    if not state.get("initial_check_done") then
-        state.set("initial_check_done", true)
-        noctalia.runAsync("sleep 3", function()
-            checkUpdates()
-        end)
-    end
+    noctalia.setUpdateInterval(checkInterval)
+    checkUpdates()
 end
 
 function onIpc(event, _payload)
     if event == "check" then
         checkUpdates()
     elseif event == "update_pacman" then
-        updating = true
+        if isUpdating then
+            return
+        end
+        isUpdating = true
         noctalia.runInTerminal("sudo pacman -Syu --noconfirm")
         noctalia.runAsync("sleep 3", function()
-            updating = false
+            isUpdating = false
             checkUpdates()
         end)
     elseif event == "update_aur" then
-        if aurHelper then
-            updating = true
-            noctalia.runInTerminal(aurHelper .. " -Sua --noconfirm --answerclean None")
-            noctalia.runAsync("sleep 3", function()
-                updating = false
-                checkUpdates()
-            end)
+        if isUpdating or not aurHelper then
+            return
         end
+        isUpdating = true
+        noctalia.runInTerminal(aurHelper .. " -Sua --noconfirm --answerclean None")
+        noctalia.runAsync("sleep 3", function()
+            isUpdating = false
+            checkUpdates()
+        end)
     elseif event == "update_flatpak" then
-        if state.get("flatpak_installed") then
-            updating = true
-            noctalia.runInTerminal("flatpak update -y")
-            noctalia.runAsync("sleep 3", function()
-                updating = false
-                checkUpdates()
-            end)
+        if isUpdating or not flatpakInstalled then
+            return
         end
+        isUpdating = true
+        noctalia.runInTerminal("flatpak update -y")
+        noctalia.runAsync("sleep 3", function()
+            isUpdating = false
+            checkUpdates()
+        end)
     elseif event == "update_all" then
-        updating = true
+        if isUpdating then
+            return
+        end
+        isUpdating = true
         local commands = { "sudo pacman -Syu --noconfirm" }
         if aurHelper then
             table.insert(commands, aurHelper .. " -Sua --noconfirm --answerclean None")
         end
-        if state.get("flatpak_installed") then
+        if flatpakInstalled then
             table.insert(commands, "flatpak update -y")
         end
         noctalia.runInTerminal(table.concat(commands, " && "))
         noctalia.runAsync("sleep 5", function()
-            updating = false
+            isUpdating = false
             checkUpdates()
         end)
     end

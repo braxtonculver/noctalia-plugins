@@ -9,20 +9,19 @@
     "title": "System Updates",
     "last_checked": "Last checked: {time}",
     "never_checked": "Never checked",
-    "pacman": {
-      "title": "Pacman",
-      "subtitle": "{count} packages"
-    },
-    "aur": {
-      "title": "AUR",
-      "subtitle": "{count} packages",
-      "no_helper": "No AUR helper found"
-    },
-    "flatpak": {
-      "title": "Flatpak",
-      "subtitle": "{count} packages",
-      "not_installed": "Flatpak not installed"
-    }
+    "refresh": "Refresh",
+    "checking": "Checking...",
+    "up_to_date": "Up to date",
+    "up_to_date_message": "All packages up to date",
+    "updates_available": "updates available",
+    "packages_count": "{count} packages",
+    "update": "Update",
+    "update_all": "Update All",
+    "search": "Search packages...",
+    "no_results": "No packages match your search",
+    "show_all": "Show all",
+    "no_helper": "No AUR helper found",
+    "not_installed": "Flatpak not installed"
   },
   "settings": {
     "check_interval": {
@@ -32,6 +31,10 @@
     "show_count": {
       "label": "Show update count",
       "description": "Display the number of available updates next to the icon."
+    },
+    "icon_glyph": {
+      "label": "Widget icon",
+      "description": "The icon glyph displayed in the bar widget. Defaults to package-update."
     }
   }
 }

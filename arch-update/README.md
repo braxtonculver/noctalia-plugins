@@ -17,12 +17,7 @@ Automatic system update checker and updater for Arch Linux. Monitors pacman, AUR
 
 ## Usage
 
-Add the `status` widget from the Add-widget picker. It shows a system glyph with a badge indicating the number of packages that have updates available. No clicking required — the count updates automatically.
-
-The service checks for updates on boot (after a 3-second delay) and then every 5 minutes (configurable via `check_interval`). Each check queries:
-- `pacman -Qu` for official repository packages
-- `yay -Qua` or `paru -Qua` for AUR packages (if an AUR helper is installed)
-- `flatpak remote-ls --updates` for Flatpak packages (if flatpak is installed)
+Add the `status` widget from the Add-widget picker. It shows a configurable icon glyph with an optional badge indicating the number of packages that have updates available. The count updates automatically on boot and every 5 minutes (configurable).
 
 Click the widget to open the updates panel.
 
@@ -34,11 +29,13 @@ noctalia msg panel-toggle braxtonculver/arch-update:updates
 
 ### Panel
 
-The panel shows per-manager breakdowns with individual update buttons and a combined "Update All" action:
+The panel shows a status indicator, per-manager breakdowns with package lists, and individual update buttons:
 
-- **Pacman** — runs `sudo pacman -Syu` in a terminal
-- **AUR** — runs `yay -Sua` or `paru -Sua` in a terminal
-- **Flatpak** — runs `flatpak update` in a terminal
+- **Status** — shows a large update count when updates are available, or a checkmark when up to date
+- **Pacman** — lists official repository packages with a "Update" button
+- **AUR** — lists AUR packages with a "Update" button (requires yay or paru)
+- **Flatpak** — lists Flatpak packages with a "Update" button (requires flatpak)
+- **Package List** — scrollable, searchable list of all packages needing updates
 - **Update All** — chains all applicable update commands
 
 All update commands run in a terminal window so you can see exactly what is happening and provide your sudo password if prompted. No commands run silently in the background.
@@ -47,12 +44,17 @@ All update commands run in a terminal window so you can see exactly what is happ
 
 Click "Refresh" in the panel header to trigger an immediate recheck. The service also rechecks automatically after each update completes.
 
+### Search
+
+Type in the search box to filter the package list by name in real time.
+
 ## Settings
 
 | Setting | Type | Default | Description |
 | --- | --- | --- | --- |
 | `check_interval` | `int` | `300` | How often to check for updates automatically, in seconds. Minimum 30. |
 | `show_count` | `bool` | `true` | Display the number of available updates next to the icon. |
+| `icon_glyph` | `glyph` | `package-update` | The icon glyph displayed in the bar widget. |
 
 ## IPC
 
@@ -67,7 +69,7 @@ noctalia msg plugin braxtonculver/arch-update:checker all update_all
 ## Notes
 
 - All update commands run via `runInTerminal` for full user visibility and control.
-- The service prevents concurrent update operations — if an update is in progress, new check requests are ignored until the update completes and a fresh check runs.
+- The service prevents concurrent update operations — if an update is in progress, new check requests are queued and run after the current update completes.
 - AUR helper detection is performed once at service startup. If you install yay or paru after the service starts, restart Noctalia to pick it up.
 - Network errors during update checks are handled gracefully — the previous state is preserved and a log message is emitted.
-- Flatpak update counts may include trailing whitespace or header lines from `flatpak remote-ls`; the counting logic accounts for this.
+- Package names and versions are parsed from command output and displayed in the panel's scrollable package list.
