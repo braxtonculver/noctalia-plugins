@@ -16,6 +16,7 @@
     "packages_count": "{count} packages",
     "update": "Update",
     "update_all": "Update All",
+    "update_with": "Update with",
     "search": "Search packages...",
     "no_results": "No packages match your search",
     "show_all": "Show all",
@@ -27,13 +28,28 @@
       "label": "Check interval (seconds)",
       "description": "How often to check for updates automatically. Minimum 30 seconds."
     },
+    "enable_aur": {
+      "label": "Enable AUR updates",
+      "description": "Check for AUR package updates. Requires yay or paru."
+    },
+    "aur_helper": {
+      "label": "AUR helper",
+      "description": "Which AUR helper to use. Auto detects paru first, then yay.",
+      "auto": "Auto-detect",
+      "yay": "yay",
+      "paru": "paru"
+    },
+    "enable_flatpak": {
+      "label": "Enable Flatpak updates",
+      "description": "Check for Flatpak package updates. Requires flatpak."
+    },
     "show_count": {
       "label": "Show update count",
       "description": "Display the number of available updates next to the icon."
     },
     "icon_glyph": {
       "label": "Widget icon",
-      "description": "The icon glyph displayed in the bar widget. Defaults to package-update."
+      "description": "The icon glyph displayed in the bar widget."
     }
   }
 }

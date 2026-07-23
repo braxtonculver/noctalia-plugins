@@ -1,6 +1,6 @@
 --!nonstrict
 -- Updates panel: shows per-manager breakdowns (pacman, AUR, flatpak) with
--- package lists, individual update buttons, and a combined "Update All" action.
+-- packages listed under their respective sections and individual update buttons.
 -- Communicates with the service through shared state.
 
 local state = noctalia.state
@@ -17,6 +17,10 @@ local isChecking = false
 local errorMsg = nil
 local aurHelper = state.get("aur_helper")
 local flatpakInstalled = state.get("flatpak_installed")
+local enableAur = noctalia.getConfig("enable_aur")
+if enableAur == nil then enableAur = true end
+local enableFlatpak = noctalia.getConfig("enable_flatpak")
+if enableFlatpak == nil then enableFlatpak = true end
 local showAll = false
 local searchText = ""
 
@@ -66,7 +70,7 @@ local function searchMatch(text)
     return string.find(text:lower(), searchText:lower(), 1, true) ~= nil
 end
 
-local function buildPackageList(packages, sourceLabel)
+local function buildPackageRows(packages, sourceLabel)
     local elements = {}
     local maxDisplay = showAll and #packages or math.min(50, #packages)
     local visibleCount = 0
@@ -78,7 +82,7 @@ local function buildPackageList(packages, sourceLabel)
             table.insert(elements, ui.row({
                 key = sourceLabel .. "-" .. pkg.name,
                 paddingH = 10,
-                paddingV = 4,
+                paddingV = 3,
                 radius = 4,
                 fill = "surface_container_low",
             }, {
@@ -111,43 +115,49 @@ local function buildPackageList(packages, sourceLabel)
             text = noctalia.tr("panel.no_results"),
             fontSize = 11,
             color = "on_surface_variant",
+            paddingV = 4,
         }))
     end
 
     return elements
 end
 
-local function managerCard(title, count, glyph, color, hasHelper, disabledLabel, updateEvent)
+local function managerSection(title, count, glyph, color, hasHelper, disabledLabel, updateEvent, packages, sourceLabel)
     local elements = {}
 
+    -- Section header row
     table.insert(elements, ui.row({
         align = "center",
-        gap = 10,
+        gap = 8,
     }, {
         ui.glyph({
             name = glyph,
-            size = 18,
+            size = 16,
             color = color,
         }),
-        ui.column({
+        ui.label({
+            text = title,
+            fontWeight = "bold",
+            color = "on_surface",
             flexGrow = 1,
-            gap = 2,
-        }, {
-            ui.label({
-                text = title,
-                fontWeight = "bold",
-                color = "on_surface",
-            }),
-            ui.label({
-                text = count > 0
-                    and noctalia.tr("panel.packages_count", { count = tostring(count) })
-                    or (disabledLabel or noctalia.tr("panel.up_to_date")),
-                fontSize = 11,
-                color = count > 0 and "on_surface_variant" or "success",
-            }),
+        }),
+        ui.label({
+            text = count > 0
+                and noctalia.tr("panel.packages_count", { count = tostring(count) })
+                or (disabledLabel or noctalia.tr("panel.up_to_date")),
+            fontSize = 11,
+            color = count > 0 and "on_surface_variant" or "success",
         }),
     }))
 
+    -- Package list (only if there are packages)
+    if #packages > 0 then
+        for _, row in ipairs(buildPackageRows(packages, sourceLabel)) do
+            table.insert(elements, row)
+        end
+    end
+
+    -- Update button (only if helper exists and there are updates)
     if hasHelper and count > 0 then
         table.insert(elements, ui.button({
             text = noctalia.tr("panel.update"),
@@ -165,7 +175,7 @@ local function managerCard(title, count, glyph, color, hasHelper, disabledLabel,
     end
 
     return ui.column({
-        gap = 10,
+        gap = 8,
         paddingH = 12,
         paddingV = 10,
         fill = "surface_container",
@@ -240,79 +250,53 @@ local function render()
         })
     end
 
-    -- Manager cards
-    local managerCards = ui.column({
-        gap = 8,
-    }, {
-        managerCard("Pacman", pacmanCount, "package", "tertiary", true, nil, "onUpdatePacman"),
-        managerCard(
-            "AUR (" .. (aurHelper or "none") .. ")",
+    -- Manager sections (each with its own package list)
+    local managerSections = ui.column({ gap = 8 }, {})
+
+    -- Pacman section (always shown)
+    table.insert(managerSections.children, managerSection(
+        "Pacman",
+        pacmanCount,
+        "package",
+        "tertiary",
+        true,
+        nil,
+        "onUpdatePacman",
+        pacmanPackages,
+        "pacman"
+    ))
+
+    -- AUR section (only if enabled)
+    if enableAur then
+        local helperLabel = aurHelper
+            and noctalia.tr("panel.update_with") .. " " .. aurHelper
+            or noctalia.tr("panel.no_helper")
+        table.insert(managerSections.children, managerSection(
+            "AUR" .. (aurHelper and (" (" .. aurHelper .. ")") or ""),
             aurCount,
             "building-community",
             "primary",
             aurHelper ~= nil,
-            noctalia.tr("panel.no_helper"),
-            "onUpdateAur"
-        ),
-        managerCard(
+            helperLabel,
+            "onUpdateAur",
+            aurPackages,
+            "aur"
+        ))
+    end
+
+    -- Flatpak section (only if enabled)
+    if enableFlatpak then
+        table.insert(managerSections.children, managerSection(
             "Flatpak",
             flatpakCount,
             "brand-flutter",
             "secondary",
             flatpakInstalled,
             noctalia.tr("panel.not_installed"),
-            "onUpdateFlatpak"
-        ),
-    })
-
-    -- Package list (only when there are updates)
-    local packageListSection = ui.column({ gap = 0 }, {})
-    if hasUpdates then
-        local allPackages = {}
-        for _, pkg in ipairs(pacmanPackages) do
-            table.insert(allPackages, pkg)
-        end
-        for _, pkg in ipairs(aurPackages) do
-            table.insert(allPackages, pkg)
-        end
-        for _, pkg in ipairs(flatpakPackages) do
-            table.insert(allPackages, pkg)
-        end
-
-        if #allPackages > 0 then
-            local packageElements = {}
-            if #pacmanPackages > 0 then
-                for _, el in ipairs(buildPackageList(pacmanPackages, "pacman")) do
-                    table.insert(packageElements, el)
-                end
-            end
-            if #aurPackages > 0 then
-                for _, el in ipairs(buildPackageList(aurPackages, "aur")) do
-                    table.insert(packageElements, el)
-                end
-            end
-            if #flatpakPackages > 0 then
-                for _, el in ipairs(buildPackageList(flatpakPackages, "flatpak")) do
-                    table.insert(packageElements, el)
-                end
-            end
-
-            packageListSection = ui.column({
-                gap = 6,
-            }, {
-                ui.input({
-                    placeholder = noctalia.tr("panel.search"),
-                    controlSize = "sm",
-                    onChange = "onSearchChanged",
-                }),
-                ui.scroll({
-                    gap = 2,
-                    fill = "surface_container_low",
-                    radius = 8,
-                    padding = 4,
-                }, packageElements),
-            })
-        end
+            "onUpdateFlatpak",
+            flatpakPackages,
+            "flatpak"
+        ))
     end
 
     -- Error section
@@ -341,8 +325,18 @@ local function render()
         })
     end
 
+    -- Search input (only if there are updates)
+    local searchSection = nil
+    if hasUpdates then
+        searchSection = ui.input({
+            placeholder = noctalia.tr("panel.search"),
+            controlSize = "sm",
+            onChange = "onSearchChanged",
+        })
+    end
+
     -- Assemble the full panel
-    panel.render(ui.column({ flexGrow = 1, gap = 12 }, {
+    panel.render(ui.column({ flexGrow = 1, gap = 10 }, {
         -- Header
         ui.row({ align = "center", justify = "space_between", gap = 8 }, {
             ui.label({
@@ -362,10 +356,10 @@ local function render()
         }),
 
         -- Scrollable body
-        ui.scroll({ flexGrow = 1, gap = 12 }, {
+        ui.scroll({ flexGrow = 1, gap = 8 }, {
             statusSection,
-            managerCards,
-            packageListSection,
+            searchSection or ui.column({}),
+            managerSections,
             errorSection or ui.column({}),
         }),
 
@@ -401,6 +395,10 @@ function onOpen(_context)
     errorMsg = state.get("error")
     aurHelper = state.get("aur_helper")
     flatpakInstalled = state.get("flatpak_installed")
+    enableAur = noctalia.getConfig("enable_aur")
+    if enableAur == nil then enableAur = true end
+    enableFlatpak = noctalia.getConfig("enable_flatpak")
+    if enableFlatpak == nil then enableFlatpak = true end
     showAll = false
     searchText = ""
     render()

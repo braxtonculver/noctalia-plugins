@@ -1,12 +1,12 @@
 id = "braxtonculver/arch-update"
 name = "Arch Updater"
-version = "2.0.0"
+version = "2.1.0"
 plugin_api = 3
 author = "braxtonculver"
 license = "MIT"
 dependencies = []
 tags = ["system", "utility", "arch", "indicator"]
-icon = "package-update"
+icon = "refresh"
 description = "Automatic system updater for pacman, AUR helpers, and flatpak with update count display."
 
 [[setting]]
@@ -16,6 +16,32 @@ label_key = "settings.check_interval.label"
 description_key = "settings.check_interval.description"
 default = 300
 min = 30
+
+[[setting]]
+key = "enable_aur"
+type = "bool"
+label_key = "settings.enable_aur.label"
+description_key = "settings.enable_aur.description"
+default = true
+
+[[setting]]
+key = "aur_helper"
+type = "select"
+label_key = "settings.aur_helper.label"
+description_key = "settings.aur_helper.description"
+default = "auto"
+options = [
+  { value = "auto", label_key = "settings.aur_helper.auto" },
+  { value = "yay", label_key = "settings.aur_helper.yay" },
+  { value = "paru", label_key = "settings.aur_helper.paru" },
+]
+
+[[setting]]
+key = "enable_flatpak"
+type = "bool"
+label_key = "settings.enable_flatpak.label"
+description_key = "settings.enable_flatpak.description"
+default = true
 
 [[widget]]
 id = "status"
@@ -30,10 +56,10 @@ entry = "widget.luau"
 
   [[widget.setting]]
   key = "icon_glyph"
-  type = "string"
+  type = "glyph"
   label_key = "settings.icon_glyph.label"
   description_key = "settings.icon_glyph.description"
-  default = "package-update"
+  default = "refresh"
 
 [[service]]
 id = "checker"

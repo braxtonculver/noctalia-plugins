@@ -3,7 +3,7 @@
 -- a customizable glyph. Uses declarative ui.* rendering. Clicking the widget
 -- opens the updates panel.
 
-local updateGlyph = noctalia.getConfig("icon_glyph") or "package-update"
+local updateGlyph = noctalia.getConfig("icon_glyph") or "refresh"
 local showCount = noctalia.getConfig("show_count")
 if showCount == nil then
     showCount = true

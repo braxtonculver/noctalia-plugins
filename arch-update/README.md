@@ -12,7 +12,7 @@ Automatic system update checker and updater for Arch Linux. Monitors pacman, AUR
 ## Requirements
 
 - **pacman** — always available on Arch Linux
-- **yay** or **paru** — optional, for AUR package updates. Auto-detected at startup.
+- **yay** or **paru** — optional, for AUR package updates. Auto-detected or configurable.
 - **flatpak** — optional, for Flatpak package updates. Auto-detected at startup.
 
 ## Usage
@@ -29,13 +29,12 @@ noctalia msg panel-toggle braxtonculver/arch-update:updates
 
 ### Panel
 
-The panel shows a status indicator, per-manager breakdowns with package lists, and individual update buttons:
+The panel shows a status indicator, per-manager breakdowns with packages listed under their respective sections, and individual update buttons:
 
 - **Status** — shows a large update count when updates are available, or a checkmark when up to date
 - **Pacman** — lists official repository packages with an "Update" button
 - **AUR** — lists AUR packages with an "Update" button (requires yay or paru)
 - **Flatpak** — lists Flatpak packages with an "Update" button (requires flatpak)
-- **Package List** — scrollable, searchable list of all packages needing updates
 - **Update All** — chains all applicable update commands
 
 All update commands run in a terminal window so you can see exactly what is happening and provide your sudo password if prompted. No commands run silently in the background.
@@ -53,8 +52,11 @@ Type in the search box to filter the package list by name in real time.
 | Setting | Type | Default | Description |
 | --- | --- | --- | --- |
 | `check_interval` | `int` | `300` | How often to check for updates automatically, in seconds. Minimum 30. |
+| `enable_aur` | `bool` | `true` | Check for AUR package updates. |
+| `aur_helper` | `select` | `auto` | Which AUR helper to use: auto-detect, yay, or paru. |
+| `enable_flatpak` | `bool` | `true` | Check for Flatpak package updates. |
 | `show_count` | `bool` | `true` | Display the number of available updates next to the icon. |
-| `icon_glyph` | `string` | `package-update` | The icon glyph displayed in the bar widget. |
+| `icon_glyph` | `glyph` | `refresh` | The icon glyph displayed in the bar widget. |
 
 ## IPC
 
@@ -69,7 +71,7 @@ noctalia msg plugin braxtonculver/arch-update:checker all update_all
 ## Notes
 
 - All update commands run via `runInTerminal` for full user visibility and control.
+- All update checks run in parallel with a 45-second safety timeout to prevent hangs.
 - The service prevents concurrent update operations — if an update is in progress, new check requests are queued and run after the current update completes.
 - AUR helper and flatpak detection is performed once at service startup. If you install yay, paru, or flatpak after the service starts, restart Noctalia to pick it up.
-- Network errors during update checks are handled gracefully — the previous state is preserved and a log message is emitted.
-- All async commands have a 30-second timeout to prevent hangs.
+- You can disable AUR or Flatpak checking entirely in settings, which hides those sections from the panel.
