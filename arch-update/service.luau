@@ -7,7 +7,7 @@
 -- user full visibility and control. No commands run silently.
 
 local state = noctalia.state
-local checkInterval = (noctalia.getConfig("check_interval") or 300) * 1000
+local checkInterval = (noctalia.getConfig("check_interval") or 360) * 60000
 local enableAur = noctalia.getConfig("enable_aur")
 if enableAur == nil then enableAur = true end
 local enableFlatpak = noctalia.getConfig("enable_flatpak")
@@ -71,6 +71,16 @@ state.set("checking", false)
 state.set("error", nil)
 state.set("aur_helper", aurHelper)
 state.set("flatpak_installed", flatpakInstalled)
+
+-- Watch for refresh requests from the panel (more reliable than IPC).
+-- The panel sets this timestamp when the user clicks Refresh.
+local lastRefreshRequest = 0
+state.watch("refresh_request", function(timestamp)
+    if timestamp ~= nil and timestamp ~= lastRefreshRequest then
+        lastRefreshRequest = timestamp
+        checkUpdates()
+    end
+end)
 
 local function parsePackages(text)
     local packages = {}
@@ -222,7 +232,7 @@ function onIpc(event, _payload)
     elseif event == "update_aur" then
         if isUpdating or not aurHelper then return end
         isUpdating = true
-        noctalia.runInTerminal(aurHelper .. " -Sua --noconfirm --answerclean None")
+        noctalia.runInTerminal(aurHelper .. " -Sua --noconfirm")
         noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
             isUpdating = false
             checkUpdates()
@@ -240,7 +250,7 @@ function onIpc(event, _payload)
         isUpdating = true
         local commands = { "sudo pacman -Syu --noconfirm" }
         if aurHelper then
-            table.insert(commands, aurHelper .. " -Sua --noconfirm --answerclean None")
+            table.insert(commands, aurHelper .. " -Sua --noconfirm")
         end
         if flatpakInstalled then
             table.insert(commands, "flatpak update -y")

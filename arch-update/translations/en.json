@@ -25,8 +25,8 @@
   },
   "settings": {
     "check_interval": {
-      "label": "Check interval (seconds)",
-      "description": "How often to check for updates automatically. Minimum 30 seconds."
+      "label": "Check interval (minutes)",
+      "description": "How often to check for updates automatically, in minutes. Default 360 (6 hours)."
     },
     "enable_aur": {
       "label": "Enable AUR updates",

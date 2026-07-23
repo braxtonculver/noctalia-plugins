@@ -408,6 +408,7 @@ function onRefreshClicked()
     state.set("checking", true)
     isChecking = true
     render()
+    state.set("refresh_request", os.time())
     noctalia.runAsync("noctalia msg plugin braxtonculver/arch-update:checker all check")
 end
 
