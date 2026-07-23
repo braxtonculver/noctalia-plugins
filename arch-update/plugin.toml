@@ -1,6 +1,6 @@
 id = "braxtonculver/arch-update"
 name = "Arch Updater"
-version = "2.2.0"
+version = "2.2.1"
 plugin_api = 3
 author = "braxtonculver"
 license = "MIT"
@@ -16,6 +16,7 @@ label_key = "settings.check_interval.label"
 description_key = "settings.check_interval.description"
 default = 360
 min = 5
+max = 1440
 
 [[setting]]
 key = "enable_aur"
