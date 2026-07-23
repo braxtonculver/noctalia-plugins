@@ -66,15 +66,15 @@ local function searchMatch(text)
     return string.find(text:lower(), searchText:lower(), 1, true) ~= nil
 end
 
-local function buildPackageList(packages, sourceLabel, color)
+local function buildPackageList(packages, sourceLabel)
     local elements = {}
-    local count = 0
     local maxDisplay = showAll and #packages or math.min(50, #packages)
+    local visibleCount = 0
 
     for i = 1, maxDisplay do
         local pkg = packages[i]
         if searchMatch(pkg.name) then
-            count += 1
+            visibleCount += 1
             table.insert(elements, ui.row({
                 key = sourceLabel .. "-" .. pkg.name,
                 paddingH = 10,
@@ -99,35 +99,25 @@ local function buildPackageList(packages, sourceLabel, color)
     end
 
     if not showAll and #packages > 50 then
-        table.insert(elements, ui.row({
-            paddingH = 10,
-            paddingV = 6,
-        }, {
-            ui.button({
-                text = noctalia.tr("panel.show_all"),
-                variant = "ghost",
-                onClick = "onShowAll",
-            }),
+        table.insert(elements, ui.button({
+            text = noctalia.tr("panel.show_all"),
+            variant = "ghost",
+            onClick = "onShowAll",
         }))
     end
 
-    if count == 0 and searchText ~= "" then
-        table.insert(elements, ui.row({
-            paddingH = 10,
-            paddingV = 12,
-        }, {
-            ui.label({
-                text = noctalia.tr("panel.no_results"),
-                fontSize = 11,
-                color = "on_surface_variant",
-            }),
+    if visibleCount == 0 and searchText ~= "" then
+        table.insert(elements, ui.label({
+            text = noctalia.tr("panel.no_results"),
+            fontSize = 11,
+            color = "on_surface_variant",
         }))
     end
 
     return elements
 end
 
-local function managerCard(title, count, glyph, color, hasHelper, helperLabel, updateEvent)
+local function managerCard(title, count, glyph, color, hasHelper, disabledLabel, updateEvent)
     local elements = {}
 
     table.insert(elements, ui.row({
@@ -151,7 +141,7 @@ local function managerCard(title, count, glyph, color, hasHelper, helperLabel, u
             ui.label({
                 text = count > 0
                     and noctalia.tr("panel.packages_count", { count = tostring(count) })
-                    or (helperLabel or noctalia.tr("panel.up_to_date")),
+                    or (disabledLabel or noctalia.tr("panel.up_to_date")),
                 fontSize = 11,
                 color = count > 0 and "on_surface_variant" or "success",
             }),
@@ -167,7 +157,7 @@ local function managerCard(title, count, glyph, color, hasHelper, helperLabel, u
         }))
     elseif not hasHelper then
         table.insert(elements, ui.button({
-            text = helperLabel or "N/A",
+            text = disabledLabel or "N/A",
             variant = "ghost",
             controlSize = "sm",
             enabled = false,
@@ -186,6 +176,7 @@ end
 local function render()
     local hasUpdates = totalCount > 0
 
+    -- Status section
     local statusSection
     if isChecking then
         statusSection = ui.column({
@@ -242,25 +233,18 @@ local function render()
                 color = "success",
             }),
             ui.label({
-                text = noctalia.tr("panel.up_to_date_message"),
+                text = noctalia.tr("panel.up_to_date"),
                 color = "success",
                 fontWeight = "medium",
             }),
         })
     end
 
+    -- Manager cards
     local managerCards = ui.column({
         gap = 8,
     }, {
-        managerCard(
-            "Pacman",
-            pacmanCount,
-            "package",
-            "tertiary",
-            true,
-            nil,
-            "onUpdatePacman"
-        ),
+        managerCard("Pacman", pacmanCount, "package", "tertiary", true, nil, "onUpdatePacman"),
         managerCard(
             "AUR (" .. (aurHelper or "none") .. ")",
             aurCount,
@@ -281,6 +265,7 @@ local function render()
         ),
     })
 
+    -- Package list (only when there are updates)
     local packageListSection = ui.column({ gap = 0 }, {})
     if hasUpdates then
         local allPackages = {}
@@ -297,20 +282,17 @@ local function render()
         if #allPackages > 0 then
             local packageElements = {}
             if #pacmanPackages > 0 then
-                local pkgs = buildPackageList(pacmanPackages, "pacman", "tertiary")
-                for _, el in ipairs(pkgs) do
+                for _, el in ipairs(buildPackageList(pacmanPackages, "pacman")) do
                     table.insert(packageElements, el)
                 end
             end
             if #aurPackages > 0 then
-                local pkgs = buildPackageList(aurPackages, "aur", "primary")
-                for _, el in ipairs(pkgs) do
+                for _, el in ipairs(buildPackageList(aurPackages, "aur")) do
                     table.insert(packageElements, el)
                 end
             end
             if #flatpakPackages > 0 then
-                local pkgs = buildPackageList(flatpakPackages, "flatpak", "secondary")
-                for _, el in ipairs(pkgs) do
+                for _, el in ipairs(buildPackageList(flatpakPackages, "flatpak")) do
                     table.insert(packageElements, el)
                 end
             end
@@ -325,7 +307,6 @@ local function render()
                 }),
                 ui.scroll({
                     gap = 2,
-                    maxHeight = 140,
                     fill = "surface_container_low",
                     radius = 8,
                     padding = 4,
@@ -334,6 +315,7 @@ local function render()
         end
     end
 
+    -- Error section
     local errorSection = nil
     if errorMsg and errorMsg ~= "" then
         errorSection = ui.row({
@@ -359,13 +341,10 @@ local function render()
         })
     end
 
-    local children = {
+    -- Assemble the full panel
+    panel.render(ui.column({ flexGrow = 1, gap = 12 }, {
         -- Header
-        ui.row({
-            paddingH = 16,
-            paddingV = 12,
-            align = "center",
-        }, {
+        ui.row({ align = "center", justify = "space_between", gap = 8 }, {
             ui.label({
                 text = noctalia.tr("panel.title"),
                 fontSize = 16,
@@ -373,55 +352,25 @@ local function render()
                 color = "on_surface",
                 flexGrow = 1,
             }),
-            ui.glyph({
-                name = "refresh",
-                size = 14,
-                color = isChecking and "primary" or "on_surface_variant",
-            }),
             ui.button({
                 text = isChecking and noctalia.tr("panel.checking") or noctalia.tr("panel.refresh"),
                 variant = "ghost",
                 controlSize = "sm",
                 onClick = "onRefreshClicked",
             }),
-            ui.button({
-                glyph = "x",
-                variant = "ghost",
-                onClick = "onCloseClicked",
-            }),
+            ui.button({ glyph = "close", onClick = "onCloseClicked" }),
         }),
 
-        -- Status
-        ui.column({
-            paddingH = 16,
-            gap = 0,
-        }, { statusSection }),
-
-        -- Manager cards
-        ui.column({
-            paddingH = 16,
-            gap = 8,
-        }, { managerCards }),
-
-        -- Package list
-        ui.column({
-            paddingH = 16,
-            flexGrow = 1,
-            gap = 0,
-        }, { packageListSection }),
-
-        -- Error
-        errorSection and ui.column({
-            paddingH = 16,
-            gap = 0,
-        }, { errorSection }) or ui.column({}),
+        -- Scrollable body
+        ui.scroll({ flexGrow = 1, gap = 12 }, {
+            statusSection,
+            managerCards,
+            packageListSection,
+            errorSection or ui.column({}),
+        }),
 
         -- Footer
-        ui.row({
-            paddingH = 16,
-            paddingV = 12,
-            align = "center",
-        }, {
+        ui.row({ align = "center", justify = "space_between", gap = 8 }, {
             ui.label({
                 text = formatTime(lastChecked),
                 fontSize = 10,
@@ -436,12 +385,7 @@ local function render()
                 onClick = "onUpdateAll",
             }),
         }),
-    }
-
-    panel.render(ui.column({
-        flexGrow = 1,
-        gap = 8,
-    }, children))
+    }))
 end
 
 function onOpen(_context)

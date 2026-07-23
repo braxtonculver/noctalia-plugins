@@ -3,10 +3,10 @@
 [[plugin]]
 id = "braxtonculver/arch-update"
 name = "Arch Updater"
-version = "1.0.0"
+version = "2.0.0"
 author = "braxtonculver"
 license = "MIT"
-icon = "package"
+icon = "package-update"
 description = "Automatic system updater for pacman, AUR helpers, and flatpak with update count display."
 deprecated = false
 plugin_api = 3

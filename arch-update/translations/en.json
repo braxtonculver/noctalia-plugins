@@ -11,8 +11,7 @@
     "never_checked": "Never checked",
     "refresh": "Refresh",
     "checking": "Checking...",
-    "up_to_date": "Up to date",
-    "up_to_date_message": "All packages up to date",
+    "up_to_date": "All packages up to date",
     "updates_available": "updates available",
     "packages_count": "{count} packages",
     "update": "Update",
@@ -21,7 +20,7 @@
     "no_results": "No packages match your search",
     "show_all": "Show all",
     "no_helper": "No AUR helper found",
-    "not_installed": "Flatpak not installed"
+    "not_installed": "Not installed"
   },
   "settings": {
     "check_interval": {

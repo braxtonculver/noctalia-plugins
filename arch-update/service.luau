@@ -8,18 +8,33 @@
 
 local state = noctalia.state
 local checkInterval = (noctalia.getConfig("check_interval") or 300) * 1000
+local CMD_TIMEOUT = 30000
 
 local isChecking = false
 local isUpdating = false
 local pendingCheck = false
 
+-- Detect package managers using file existence checks (more reliable than
+-- commandExists which depends on PATH in the service environment).
+local function findBin(name)
+    if noctalia.commandExists(name) then
+        return true
+    end
+    for _, dir in ipairs({ "/usr/bin", "/usr/local/bin", "/usr/sbin" }) do
+        if noctalia.fileExists(dir .. "/" .. name) then
+            return true
+        end
+    end
+    return false
+end
+
 local aurHelper = nil
-if noctalia.commandExists("paru") then
+if findBin("paru") then
     aurHelper = "paru"
-elseif noctalia.commandExists("yay") then
+elseif findBin("yay") then
     aurHelper = "yay"
 end
-local flatpakInstalled = noctalia.commandExists("flatpak")
+local flatpakInstalled = findBin("flatpak")
 
 state.set("pacman_count", 0)
 state.set("aur_count", 0)
@@ -101,7 +116,6 @@ function checkUpdates()
                 state.set("flatpak_packages", flatpakPackages)
                 state.set("last_checked", os.time())
                 checkComplete(errors)
-
                 noctalia.log(string.format(
                     "Update check: %d pacman, %d aur, %d flatpak (%d total)",
                     pacmanCount, aurCount, flatpakCount,
@@ -112,12 +126,11 @@ function checkUpdates()
             if flatpakInstalled then
                 noctalia.runAsync("flatpak remote-ls --updates 2>/dev/null", function(fpResult)
                     if fpResult.exitCode == 0 then
-                        local packages = parsePackages(fpResult.stdout)
-                        flatpakCount = #packages
-                        flatpakPackages = packages
+                        flatpakPackages = parsePackages(fpResult.stdout)
+                        flatpakCount = #flatpakPackages
                     end
                     afterFlatpak()
-                end)
+                end, CMD_TIMEOUT)
             else
                 afterFlatpak()
             end
@@ -132,11 +145,11 @@ function checkUpdates()
                     table.insert(errors, "aur: " .. aurResult.stdout)
                 end
                 afterAur()
-            end)
+            end, CMD_TIMEOUT)
         else
             afterAur()
         end
-    end)
+    end, CMD_TIMEOUT)
 end
 
 function update()

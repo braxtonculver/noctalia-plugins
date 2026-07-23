@@ -7,7 +7,7 @@ license = "MIT"
 dependencies = []
 tags = ["system", "utility", "arch", "indicator"]
 icon = "package-update"
-description = "Automatic system updater for pacman, AUR helpers, and flatpak with update count display and package list."
+description = "Automatic system updater for pacman, AUR helpers, and flatpak with update count display."
 
 [[setting]]
 key = "check_interval"
@@ -30,7 +30,7 @@ entry = "widget.luau"
 
   [[widget.setting]]
   key = "icon_glyph"
-  type = "glyph"
+  type = "string"
   label_key = "settings.icon_glyph.label"
   description_key = "settings.icon_glyph.description"
   default = "package-update"

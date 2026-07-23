@@ -32,9 +32,9 @@ noctalia msg panel-toggle braxtonculver/arch-update:updates
 The panel shows a status indicator, per-manager breakdowns with package lists, and individual update buttons:
 
 - **Status** — shows a large update count when updates are available, or a checkmark when up to date
-- **Pacman** — lists official repository packages with a "Update" button
-- **AUR** — lists AUR packages with a "Update" button (requires yay or paru)
-- **Flatpak** — lists Flatpak packages with a "Update" button (requires flatpak)
+- **Pacman** — lists official repository packages with an "Update" button
+- **AUR** — lists AUR packages with an "Update" button (requires yay or paru)
+- **Flatpak** — lists Flatpak packages with an "Update" button (requires flatpak)
 - **Package List** — scrollable, searchable list of all packages needing updates
 - **Update All** — chains all applicable update commands
 
@@ -54,7 +54,7 @@ Type in the search box to filter the package list by name in real time.
 | --- | --- | --- | --- |
 | `check_interval` | `int` | `300` | How often to check for updates automatically, in seconds. Minimum 30. |
 | `show_count` | `bool` | `true` | Display the number of available updates next to the icon. |
-| `icon_glyph` | `glyph` | `package-update` | The icon glyph displayed in the bar widget. |
+| `icon_glyph` | `string` | `package-update` | The icon glyph displayed in the bar widget. |
 
 ## IPC
 
@@ -70,6 +70,6 @@ noctalia msg plugin braxtonculver/arch-update:checker all update_all
 
 - All update commands run via `runInTerminal` for full user visibility and control.
 - The service prevents concurrent update operations — if an update is in progress, new check requests are queued and run after the current update completes.
-- AUR helper detection is performed once at service startup. If you install yay or paru after the service starts, restart Noctalia to pick it up.
+- AUR helper and flatpak detection is performed once at service startup. If you install yay, paru, or flatpak after the service starts, restart Noctalia to pick it up.
 - Network errors during update checks are handled gracefully — the previous state is preserved and a log message is emitted.
-- Package names and versions are parsed from command output and displayed in the panel's scrollable package list.
+- All async commands have a 30-second timeout to prevent hangs.
