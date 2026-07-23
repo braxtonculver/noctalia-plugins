@@ -9,5 +9,5 @@ license = "MIT"
 icon = "package"
 description = "Automatic system updater for pacman, AUR helpers, and flatpak with update count display."
 deprecated = false
-plugin_api = 5
+plugin_api = 3
 tags = ["system", "utility", "arch", "indicator"]
