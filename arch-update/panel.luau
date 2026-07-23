@@ -253,10 +253,10 @@ local function render()
     end
 
     -- Manager sections (each with its own package list)
-    local managerSections = ui.column({ gap = 8 }, {})
+    local managerChildren = {}
 
     -- Pacman section (always shown)
-    table.insert(managerSections.children, managerSection(
+    table.insert(managerChildren, managerSection(
         "Pacman",
         pacmanCount,
         "package",
@@ -273,7 +273,7 @@ local function render()
         local helperLabel = aurHelper
             and noctalia.tr("panel.update_with") .. " " .. aurHelper
             or noctalia.tr("panel.no_helper")
-        table.insert(managerSections.children, managerSection(
+        table.insert(managerChildren, managerSection(
             "AUR" .. (aurHelper and (" (" .. aurHelper .. ")") or ""),
             aurCount,
             "building-community",
@@ -288,7 +288,7 @@ local function render()
 
     -- Flatpak section (only if enabled)
     if enableFlatpak then
-        table.insert(managerSections.children, managerSection(
+        table.insert(managerChildren, managerSection(
             "Flatpak",
             flatpakCount,
             "brand-flutter",
@@ -300,6 +300,8 @@ local function render()
             "flatpak"
         ))
     end
+
+    local managerSections = ui.column({ gap = 8 }, managerChildren)
 
     -- Error section
     local errorSection = nil
