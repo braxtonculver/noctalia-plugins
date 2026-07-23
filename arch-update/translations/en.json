@@ -1,0 +1,37 @@
+{
+  "widget": {
+    "updates_available": "{count} updates",
+    "up_to_date": "Up to date",
+    "checking": "Checking...",
+    "error": "Check failed"
+  },
+  "panel": {
+    "title": "System Updates",
+    "last_checked": "Last checked: {time}",
+    "never_checked": "Never checked",
+    "pacman": {
+      "title": "Pacman",
+      "subtitle": "{count} packages"
+    },
+    "aur": {
+      "title": "AUR",
+      "subtitle": "{count} packages",
+      "no_helper": "No AUR helper found"
+    },
+    "flatpak": {
+      "title": "Flatpak",
+      "subtitle": "{count} packages",
+      "not_installed": "Flatpak not installed"
+    }
+  },
+  "settings": {
+    "check_interval": {
+      "label": "Check interval (seconds)",
+      "description": "How often to check for updates automatically. Minimum 30 seconds."
+    },
+    "show_count": {
+      "label": "Show update count",
+      "description": "Display the number of available updates next to the icon."
+    }
+  }
+}

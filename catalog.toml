@@ -1,0 +1,13 @@
+# Auto-generated catalog for braxtonculver/noctalia-plugins.
+
+[[plugin]]
+id = "braxtonculver/arch-update"
+name = "Arch Updater"
+version = "1.0.0"
+author = "braxtonculver"
+license = "MIT"
+icon = "package"
+description = "Automatic system updater for pacman, AUR helpers, and flatpak with update count display."
+deprecated = false
+plugin_api = 5
+tags = ["system", "utility", "arch", "indicator"]
