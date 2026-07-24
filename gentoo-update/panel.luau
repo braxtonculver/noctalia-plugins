@@ -1,6 +1,5 @@
 --!nonstrict
 -- Gentoo updater panel.
--- Shows update status, package lists per manager, and update actions.
 
 local state = noctalia.state
 local panel = noctalia.panel
@@ -15,6 +14,8 @@ local search_query = ""
 local show_all_portage = false
 local show_all_flatpak = false
 
+local render
+
 local function formatTimestamp(ts)
     if ts == 0 then return "Never" end
     return noctalia.formatTime(ts, "%H:%M")
@@ -24,7 +25,7 @@ local function getTotalCount()
     return #portage_updates + #flatpak_updates
 end
 
-local function renderManagerSection(name, glyph_name, color, updates, show_all, toggle_fn, search)
+local function managerSection(name, glyph_name, accent, updates, show_all, toggleFn, search)
     local count = #updates
     local has_updates = count > 0
 
@@ -39,27 +40,6 @@ local function renderManagerSection(name, glyph_name, color, updates, show_all, 
         end
     end
 
-    local header = ui.row({
-        align = "center",
-        gap = 8,
-        fill = "horizontal",
-    }, {
-        ui.glyph({ name = glyph_name, size = 16, color = color }),
-        ui.label({
-            text = name,
-            fontSize = 13,
-            fontWeight = "bold",
-            color = "on_surface",
-            flexGrow = 1,
-        }),
-        ui.label({
-            text = tostring(count) .. " update" .. (count ~= 1 and "s" or ""),
-            fontSize = 12,
-            color = has_updates and color or "success",
-            fontWeight = "medium",
-        }),
-    })
-
     local rows = {}
     if has_updates then
         local display = filtered
@@ -69,166 +49,82 @@ local function renderManagerSection(name, glyph_name, color, updates, show_all, 
                 table.insert(display, filtered[i])
             end
         end
-
         for _, pkg in ipairs(display) do
-            table.insert(rows, ui.row({
-                fill = "horizontal",
-                paddingH = 8,
-                paddingV = 4,
-                radius = 6,
-                align = "center",
-                gap = 8,
-            }, {
-                ui.label({
-                    text = pkg.name,
-                    fontSize = 12,
-                    color = "on_surface",
-                    flexGrow = 1,
-                }),
-                ui.label({
-                    text = pkg.version,
-                    fontSize = 11,
-                    color = "on_surface_variant",
-                }),
+            table.insert(rows, ui.row({ gap = 8, align = "center", paddingH = 4, paddingV = 2 }, {
+                ui.label({ text = pkg.name, flexGrow = 1, fontSize = 12 }),
+                ui.label({ text = pkg.version, color = "on_surface_variant", fontSize = 11 }),
             }))
         end
-
         if #filtered > 10 and not show_all then
             table.insert(rows, ui.button({
                 text = "Show all " .. #filtered,
-                onClick = toggle_fn,
+                onClick = toggleFn,
                 variant = "ghost",
             }))
         end
     else
-        table.insert(rows, ui.label({
-            text = "All packages up to date",
+        table.insert(rows, ui.label({ text = "All packages up to date", color = "success", fontSize = 12 }))
+    end
+
+    table.insert(rows, 1, ui.row({ gap = 8, align = "center" }, {
+        ui.glyph({ name = glyph_name, size = 16, color = accent }),
+        ui.label({ text = name, fontWeight = "bold", flexGrow = 1, fontSize = 13 }),
+        ui.label({
+            text = tostring(count) .. " update" .. (count ~= 1 and "s" or ""),
+            color = has_updates and accent or "success",
             fontSize = 12,
-            color = "success",
-        }))
-    end
+            fontWeight = "medium",
+        }),
+    }))
 
-    local children = { header }
-    for _, row in ipairs(rows) do
-        table.insert(children, row)
-    end
-
-    return ui.column({
-        gap = 6,
-        fill = "horizontal",
-        paddingH = 12,
-        paddingV = 10,
-        radius = 10,
-        fill_color = "surface",
-    }, children)
+    return ui.column({ gap = 6, paddingH = 12, paddingV = 10, radius = 10 }, rows)
 end
 
-local function render()
+render = function()
     local total = getTotalCount()
     local has_updates = total > 0
 
     local status_hero
     if checking then
-        status_hero = ui.column({
-            gap = 10,
-            paddingH = 24,
-            paddingV = 20,
-            fill = "primary/0.08",
-            radius = 16,
-            align = "center",
-        }, {
+        status_hero = ui.column({ gap = 10, paddingH = 24, paddingV = 20, radius = 16, align = "center" }, {
             ui.glyph({ name = "loader", size = 28, color = "primary" }),
             ui.label({ text = "Checking for updates...", color = "primary", fontWeight = "medium" }),
         })
     elseif has_updates then
-        status_hero = ui.column({
-            gap = 6,
-            paddingH = 24,
-            paddingV = 20,
-            fill = "error/0.06",
-            radius = 16,
-            align = "center",
-        }, {
-            ui.label({
-                text = tostring(total),
-                fontSize = 42,
-                fontWeight = "bold",
-                color = "error",
-            }),
-            ui.label({
-                text = "update" .. (total ~= 1 and "s" or "") .. " available",
-                color = "on_surface_variant",
-                fontSize = 13,
-            }),
+        status_hero = ui.column({ gap = 6, paddingH = 24, paddingV = 20, radius = 16, align = "center" }, {
+            ui.label({ text = tostring(total), fontSize = 42, fontWeight = "bold", color = "error" }),
+            ui.label({ text = "update" .. (total ~= 1 and "s" or "") .. " available", color = "on_surface_variant", fontSize = 13 }),
         })
     else
-        status_hero = ui.column({
-            gap = 8,
-            paddingH = 24,
-            paddingV = 20,
-            fill = "success/0.06",
-            radius = 16,
-            align = "center",
-        }, {
+        status_hero = ui.column({ gap = 8, paddingH = 24, paddingV = 20, radius = 16, align = "center" }, {
             ui.glyph({ name = "circle-check", size = 32, color = "success" }),
-            ui.label({
-                text = "System is up to date",
-                color = "success",
-                fontWeight = "medium",
-                fontSize = 13,
-            }),
+            ui.label({ text = "System is up to date", color = "success", fontWeight = "medium", fontSize = 13 }),
         })
     end
 
-    local sections = {}
-
-    table.insert(sections, renderManagerSection(
-        "Portage", "package", "primary",
-        portage_updates, show_all_portage, "onToggleShowAllPortage", search_query
-    ))
-
+    local sections = {
+        managerSection("Portage", "package", "primary", portage_updates, show_all_portage, "onToggleShowAllPortage", search_query),
+    }
     if flatpak_installed then
-        table.insert(sections, renderManagerSection(
-            "Flatpak", "box", "info",
-            flatpak_updates, show_all_flatpak, "onToggleShowAllFlatpak", search_query
-        ))
+        table.insert(sections, managerSection("Flatpak", "box", "info", flatpak_updates, show_all_flatpak, "onToggleShowAllFlatpak", search_query))
     end
 
-    local body_children = { status_hero }
+    local body = { status_hero }
     if has_updates then
-        table.insert(body_children, ui.input({
-            key = "search",
-            placeholder = "Search packages...",
-            value = search_query,
-            onChange = "onSearchChanged",
-        }))
+        table.insert(body, ui.input({ key = "search", placeholder = "Search packages...", value = search_query, onChange = "onSearchChanged" }))
     end
     for _, s in ipairs(sections) do
-        table.insert(body_children, s)
+        table.insert(body, s)
     end
 
     panel.render(ui.column({ flexGrow = 1, gap = 16 }, {
-        ui.row({ align = "center", justify = "space_between", gap = 8 }, {
-            ui.glyph({ name = "refresh-cw", size = 18, color = "primary" }),
-            ui.label({
-                text = "System Updates",
-                fontSize = 16,
-                fontWeight = "bold",
-                color = "on_surface",
-                flexGrow = 1,
-            }),
-            ui.button({ glyph = "close", onClick = "onCloseClicked" }),
+        ui.row({ align = "center", gap = 8 }, {
+            ui.label({ text = "System Updates", fontSize = 16, fontWeight = "bold", color = "on_surface", flexGrow = 1 }),
+            ui.button({ glyph = "close", onClick = "onClosePanel" }),
         }),
-
-        ui.scroll({ flexGrow = 1, gap = 12 }, body_children),
-
+        ui.scroll({ flexGrow = 1, gap = 12 }, body),
         ui.row({ gap = 8, align = "center" }, {
-            ui.label({
-                text = "Last checked: " .. formatTimestamp(last_check),
-                fontSize = 11,
-                color = "on_surface_variant",
-                flexGrow = 1,
-            }),
+            ui.label({ text = "Last checked: " .. formatTimestamp(last_check), fontSize = 11, color = "on_surface_variant", flexGrow = 1 }),
             ui.button({ text = "Check", onClick = "onCheckClicked", variant = "secondary" }),
             ui.button({ text = "Update All", onClick = "onUpdateAllClicked", variant = "primary" }),
         }),
@@ -245,37 +141,7 @@ function onOpen(_context)
     render()
 end
 
-state.watch("checking", function(value)
-    checking = value or false
-    render()
-end)
-
-state.watch("last_check", function(value)
-    last_check = value or 0
-    render()
-end)
-
-state.watch("portage_updates", function(value)
-    portage_updates = value or {}
-    render()
-end)
-
-state.watch("flatpak_updates", function(value)
-    flatpak_updates = value or {}
-    render()
-end)
-
-state.watch("portage_available", function(value)
-    portage_available = value or false
-    render()
-end)
-
-state.watch("flatpak_installed", function(value)
-    flatpak_installed = value or false
-    render()
-end)
-
-function onCloseClicked()
+function onClosePanel()
     panel.close()
 end
 
@@ -301,3 +167,10 @@ function onToggleShowAllFlatpak()
     show_all_flatpak = not show_all_flatpak
     render()
 end
+
+noctalia.state.watch("checking", function(v) checking = v or false; render() end)
+noctalia.state.watch("last_check", function(v) last_check = v or 0; render() end)
+noctalia.state.watch("portage_updates", function(v) portage_updates = v or {}; render() end)
+noctalia.state.watch("flatpak_updates", function(v) flatpak_updates = v or {}; render() end)
+noctalia.state.watch("portage_available", function(v) portage_available = v or false; render() end)
+noctalia.state.watch("flatpak_installed", function(v) flatpak_installed = v or false; render() end)
