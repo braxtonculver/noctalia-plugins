@@ -210,10 +210,12 @@ function checkUpdates()
     end)
 
     if flatpakInstalled then
-        noctalia.runAsync("flatpak remote-ls --updates 2>/dev/null", function(result)
+        noctalia.runAsync("flatpak remote-ls --updates --columns=application,version", function(result)
             if result.exitCode == 0 then
                 flatpakPackages = parsePackages(result.stdout)
                 flatpakCount = #flatpakPackages
+            elseif result.exitCode ~= 0 and result.stderr ~= nil and result.stderr ~= "" then
+                table.insert(errors, "flatpak: " .. result.stderr)
             end
             completed += 1
             if completed == expectedCount then

@@ -43,6 +43,10 @@ All update commands run in a terminal window so you can see exactly what is happ
 
 Click "Refresh" in the panel header to trigger an immediate recheck. The service also rechecks automatically after each update completes.
 
+### Sync Database
+
+Click "Sync DB" in the panel header to run `pacman -Sy` in a terminal. This refreshes the local package database so that newly available updates appear in the next check. Use this if you know packages have been pushed to the repos but the widget doesn't show them yet.
+
 ### Search
 
 Type in the search box to filter the package list by name in real time.

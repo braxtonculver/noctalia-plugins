@@ -65,6 +65,10 @@ state.watch("error", function(v)
     errorMsg = v
     render()
 end)
+state.watch("flatpak_installed", function(v)
+    flatpakInstalled = v or false
+    render()
+end)
 
 local function formatTime(unixTime)
     if unixTime == nil then
@@ -375,6 +379,12 @@ render = function()
                 controlSize = "sm",
                 onClick = "onRefreshClicked",
             }),
+            ui.button({
+                text = noctalia.tr("panel.sync_database"),
+                variant = "ghost",
+                controlSize = "sm",
+                onClick = "onSyncDatabase",
+            }),
             ui.button({ glyph = "close", onClick = "onCloseClicked" }),
         }),
 
@@ -426,6 +436,10 @@ function onRefreshClicked()
     isChecking = true
     render()
     state.set("refresh_request", os.time())
+end
+
+function onSyncDatabase()
+    state.set("sync_request", os.time())
 end
 
 function onUpdatePacman()

@@ -20,12 +20,11 @@ local isUpdating = false
 local pendingCheck = false
 local updateStartTime = 0
 
--- Detect package managers
 local function findBin(name)
     if noctalia.commandExists(name) then
         return true
     end
-    for _, dir in ipairs({ "/usr/bin", "/usr/local/bin", "/usr/sbin", "/usr/local/sbin" }) do
+    for _, dir in ipairs({ "/usr/bin", "/usr/local/bin", "/usr/sbin", "/usr/local/sbin", "/usr/lib", "/usr/lib64", "/usr/libexec" }) do
         if noctalia.fileExists(dir .. "/" .. name) then
             return true
         end
@@ -42,7 +41,6 @@ local function detectAurHelper()
     elseif aurHelperChoice == "paru" then
         return findBin("paru") and "paru" or nil
     else
-        -- auto: prefer paru, then yay
         if findBin("paru") then return "paru" end
         if findBin("yay") then return "yay" end
         return nil
@@ -53,11 +51,21 @@ local function detectFlatpak()
     if not enableFlatpak then
         return false
     end
-    return findBin("flatpak")
+    if findBin("flatpak") then
+        return true
+    end
+    noctalia.log("Flatpak binary not found in PATH or common directories")
+    return false
 end
 
 local aurHelper = detectAurHelper()
 local flatpakInstalled = detectFlatpak()
+
+noctalia.log(string.format(
+    "Detected: pacman=yes, aur=%s, flatpak=%s",
+    aurHelper or "none",
+    tostring(flatpakInstalled)
+))
 
 state.set("pacman_count", 0)
 state.set("aur_count", 0)
@@ -72,8 +80,6 @@ state.set("error", nil)
 state.set("aur_helper", aurHelper)
 state.set("flatpak_installed", flatpakInstalled)
 
--- Watch for refresh requests from the panel (more reliable than IPC).
--- The panel sets this timestamp when the user clicks Refresh.
 local lastRefreshRequest = 0
 state.watch("refresh_request", function(timestamp)
     if timestamp ~= nil and timestamp ~= lastRefreshRequest then
@@ -82,7 +88,14 @@ state.watch("refresh_request", function(timestamp)
     end
 end)
 
--- Watch for update commands from the panel.
+local lastSyncRequest = 0
+state.watch("sync_request", function(timestamp)
+    if timestamp ~= nil and timestamp ~= lastSyncRequest then
+        lastSyncRequest = timestamp
+        noctalia.runInTerminal("sudo pacman -Sy")
+    end
+end)
+
 local lastUpdateCmd = ""
 local lastUpdateTs = 0
 state.watch("update_request", function(value)
@@ -172,8 +185,7 @@ function checkUpdates()
     local flatpakPackages = {}
     local errors = {}
 
-    -- Determine how many checks we need
-    local expectedCount = 1 -- pacman is always checked
+    local expectedCount = 1
     if aurHelper then expectedCount += 1 end
     if flatpakInstalled then expectedCount += 1 end
 
@@ -212,7 +224,6 @@ function checkUpdates()
         ))
     end
 
-    -- Safety timeout: if any check hangs, force completion
     local safetyTimer = true
     noctalia.runAsync("sleep 45", function()
         if not safetyTimer then return end
@@ -224,7 +235,6 @@ function checkUpdates()
         end
     end)
 
-    -- Pacman check (always runs)
     noctalia.runAsync("pacman -Qu 2>/dev/null", function(result)
         if result.exitCode == 0 then
             pacmanPackages = parsePackages(result.stdout)
@@ -239,7 +249,6 @@ function checkUpdates()
         end
     end)
 
-    -- AUR check (parallel, if helper detected)
     if aurHelper then
         noctalia.runAsync(aurHelper .. " -Qua 2>/dev/null", function(result)
             if result.exitCode == 0 then
@@ -256,12 +265,13 @@ function checkUpdates()
         end)
     end
 
-    -- Flatpak check (parallel, if installed)
     if flatpakInstalled then
-        noctalia.runAsync("flatpak remote-ls --updates 2>/dev/null", function(result)
+        noctalia.runAsync("flatpak remote-ls --updates --columns=application,version", function(result)
             if result.exitCode == 0 then
                 flatpakPackages = parsePackages(result.stdout)
                 flatpakCount = #flatpakPackages
+            elseif result.exitCode ~= 0 and result.stderr ~= nil and result.stderr ~= "" then
+                table.insert(errors, "flatpak: " .. result.stderr)
             end
             completed += 1
             if completed == expectedCount then
@@ -274,7 +284,6 @@ end
 
 function update()
     noctalia.setUpdateInterval(checkInterval)
-    -- Safety: reset stuck update state if callback never fired
     if isUpdating and os.time() - updateStartTime > UPDATE_WAIT * 2 then
         noctalia.log("Safety: resetting stuck update state")
         isUpdating = false
