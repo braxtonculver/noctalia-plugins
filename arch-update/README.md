@@ -41,11 +41,7 @@ All update commands run in a terminal window so you can see exactly what is happ
 
 ### Refresh
 
-Click "Refresh" in the panel header to trigger an immediate recheck. The service also rechecks automatically after each update completes.
-
-### Sync Database
-
-Click "Sync DB" in the panel header to run `pacman -Sy` in a terminal. This refreshes the local package database so that newly available updates appear in the next check. Use this if you know packages have been pushed to the repos but the widget doesn't show them yet.
+Click "Check for Updates" in the panel footer to trigger an immediate recheck. The service also rechecks automatically after each update completes.
 
 ### Search
 
@@ -66,9 +62,6 @@ Type in the search box to filter the package list by name in real time.
 
 ```sh
 noctalia msg plugin braxtonculver/arch-update:checker all check
-noctalia msg plugin braxtonculver/arch-update:checker all update_pacman
-noctalia msg plugin braxtonculver/arch-update:checker all update_aur
-noctalia msg plugin braxtonculver/arch-update:checker all update_flatpak
 noctalia msg plugin braxtonculver/arch-update:checker all update_all
 ```
 
@@ -79,3 +72,4 @@ noctalia msg plugin braxtonculver/arch-update:checker all update_all
 - The service prevents concurrent update operations — if an update is in progress, new check requests are queued and run after the current update completes.
 - AUR helper and flatpak detection is performed once at service startup. If you install yay, paru, or flatpak after the service starts, restart Noctalia to pick it up.
 - You can disable AUR or Flatpak checking entirely in settings, which hides those sections from the panel.
+- Flatpak detection uses multiple fallback layers: command lookup, filesystem check at `/usr/bin/flatpak`, and async execution fallback.

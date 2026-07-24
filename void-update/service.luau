@@ -1,27 +1,35 @@
---!nonstrict
--- Background service: checks for system updates across xbps and flatpak.
--- Runs all checks in parallel with a safety timeout to prevent
--- the UI from ever getting stuck on "Checking...".
---
--- Safety: all update commands run in a terminal via runInTerminal, giving the
--- user full visibility and control. No commands run silently.
-
+local noctalia = noctalia
 local state = noctalia.state
-local checkInterval = (noctalia.getConfig("check_interval") or 360) * 60000
-local enableFlatpak = noctalia.getConfig("enable_flatpak")
-if enableFlatpak == nil then enableFlatpak = true end
-local UPDATE_WAIT = 30
 
-local isChecking = false
-local isUpdating = false
-local pendingCheck = false
-local updateStartTime = 0
+local settings = noctalia.settings
+
+local auto_check = settings.get("auto_check", true)
+local check_interval = settings.get("check_interval", 3600)
+local flatpak_enabled = settings.get("flatpak_enabled", true)
+
+local xbps_available = false
+local flatpak_installed = false
+
+local xbps_updates = {}
+local flatpak_updates = {}
+
+local checking = false
+local last_check = 0
+
+local function notify(title, message)
+    noctalia.notify(title, message)
+end
+
+local function notifyError(message)
+    noctalia.notify("Error", message)
+end
 
 local function findBin(name)
     if noctalia.commandExists(name) then
         return true
     end
-    for _, dir in ipairs({ "/usr/bin", "/usr/local/bin", "/usr/sbin", "/usr/local/sbin" }) do
+    local dirs = { "/usr/bin", "/usr/local/bin", "/usr/sbin", "/usr/local/sbin", "/usr/lib", "/usr/lib64", "/usr/libexec" }
+    for _, dir in ipairs(dirs) do
         if noctalia.fileExists(dir .. "/" .. name) then
             return true
         end
@@ -30,207 +38,130 @@ local function findBin(name)
 end
 
 local function detectFlatpak()
-    if not enableFlatpak then
-        return false
+    if not flatpak_enabled then return false end
+    if findBin("flatpak") then
+        return true
     end
-    return findBin("flatpak")
+    if noctalia.fileExists("/usr/bin/flatpak") then
+        return true
+    end
+    noctalia.runAsync("flatpak --version", function(result)
+        if result.exitCode == 0 then
+            flatpak_installed = true
+            state.set("flatpak_installed", true)
+            noctalia.log("Flatpak detected: " .. noctalia.string.trim(result.stdout))
+        end
+    end)
+    return false
 end
 
-local flatpakInstalled = detectFlatpak()
-
-state.set("xbps_count", 0)
-state.set("flatpak_count", 0)
-state.set("total_count", 0)
-state.set("xbps_packages", {})
-state.set("flatpak_packages", {})
-state.set("last_checked", nil)
-state.set("checking", false)
-state.set("error", nil)
-state.set("flatpak_installed", flatpakInstalled)
-
-local lastRefreshRequest = 0
-state.watch("refresh_request", function(timestamp)
-    if timestamp ~= nil and timestamp ~= lastRefreshRequest then
-        lastRefreshRequest = timestamp
-        checkUpdates()
-    end
-end)
-
-local lastUpdateCmd = ""
-local lastUpdateTs = 0
-state.watch("update_request", function(value)
-    if value == nil then return end
-    local cmd = value.command or ""
-    local ts = value.ts or 0
-    if cmd == lastUpdateCmd and ts == lastUpdateTs then return end
-    lastUpdateCmd = cmd
-    lastUpdateTs = ts
-    if cmd == "update_xbps" then
-        if isUpdating then return end
-        isUpdating = true
-        updateStartTime = os.time()
-        noctalia.runInTerminal("sudo xbps-install -Su -y")
-        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
-            isUpdating = false
-            checkUpdates()
-        end)
-    elseif cmd == "update_flatpak" then
-        if isUpdating or not flatpakInstalled then return end
-        isUpdating = true
-        updateStartTime = os.time()
-        noctalia.runInTerminal("flatpak update -y")
-        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
-            isUpdating = false
-            checkUpdates()
-        end)
-    elseif cmd == "update_all" then
-        if isUpdating then return end
-        isUpdating = true
-        updateStartTime = os.time()
-        local commands = { "sudo xbps-install -Su -y" }
-        if flatpakInstalled then
-            table.insert(commands, "flatpak update -y")
-        end
-        noctalia.runInTerminal(table.concat(commands, " ; "))
-        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
-            isUpdating = false
-            checkUpdates()
-        end)
-    end
-end)
-
-local function parseXbpsPackages(text)
-    local packages = {}
-    if text == nil or text == "" then
-        return packages
-    end
-    for line in text:gmatch("[^\n]+") do
-        line = noctalia.string.trim(line)
-        if line ~= "" then
-            local name = line:match("^(%S+)")
-            if name then
-                table.insert(packages, { name = name, version = "update available" })
-            end
+local function parseXbpsUpdates(output)
+    local updates = {}
+    for line in output:gmatch("[^\n]+") do
+        local name, version = line:match("^(%S+)-(%S+)")
+        if name then
+            table.insert(updates, { name = name, version = version })
         end
     end
-    return packages
+    return updates
 end
 
-local function parsePackages(text)
-    local packages = {}
-    if text == nil or text == "" then
-        return packages
-    end
-    for line in text:gmatch("[^\n]+") do
-        line = noctalia.string.trim(line)
-        if line ~= "" then
-            local name, version = line:match("^(%S+)%s+(%S+)")
-            if name then
-                table.insert(packages, { name = name, version = version })
-            end
+local function parseFlatpakUpdates(output)
+    local updates = {}
+    for line in output:gmatch("[^\n]+") do
+        local name, version = line:match("(.+)\t(.+)")
+        if name then
+            table.insert(updates, { name = name, version = version })
         end
     end
-    return packages
+    return updates
 end
 
-function checkUpdates()
-    if isChecking then
-        pendingCheck = true
+local function checkUpdates()
+    if checking then return end
+    checking = true
+    state.set("checking", true)
+
+    xbps_updates = {}
+    flatpak_updates = {}
+
+    noctalia.runAsync("xbps-install -Mun 2>/dev/null", function(result)
+        if result.exitCode == 0 then
+            xbps_updates = parseXbpsUpdates(result.stdout)
+        end
+
+        if flatpak_installed then
+            noctalia.runAsync("flatpak remote-ls --updates --columns=application,version 2>/dev/null", function(flatpakResult)
+                if flatpakResult.exitCode == 0 and flatpakResult.stdout ~= "" then
+                    flatpak_updates = parseFlatpakUpdates(flatpakResult.stdout)
+                end
+
+                checking = false
+                last_check = os.time()
+                state.set("checking", false)
+                state.set("last_check", last_check)
+                state.set("xbps_updates", xbps_updates)
+                state.set("flatpak_updates", flatpak_updates)
+            end)
+        else
+            checking = false
+            last_check = os.time()
+            state.set("checking", false)
+            state.set("last_check", last_check)
+            state.set("xbps_updates", xbps_updates)
+        end
+    end)
+end
+
+local function updateAll()
+    if checking then return end
+    local has_updates = #xbps_updates > 0 or #flatpak_updates > 0
+    if not has_updates then
+        notifyError("No updates available")
         return
     end
-    isChecking = true
-    state.set("checking", true)
-    state.set("error", nil)
 
-    local xbpsCount = 0
-    local flatpakCount = 0
-    local xbpsPackages = {}
-    local flatpakPackages = {}
-    local errors = {}
-
-    local expectedCount = 1
-    if flatpakInstalled then expectedCount += 1 end
-
-    local completed = 0
-    local aggregated = false
-
-    local function aggregateResults()
-        if aggregated then return end
-        aggregated = true
-        state.set("xbps_count", xbpsCount)
-        state.set("flatpak_count", flatpakCount)
-        state.set("total_count", xbpsCount + flatpakCount)
-        state.set("xbps_packages", xbpsPackages)
-        state.set("flatpak_packages", flatpakPackages)
-        state.set("last_checked", os.time())
-        state.set("checking", false)
-        isChecking = false
-
-        if #errors > 0 then
-            state.set("error", table.concat(errors, "; "))
-        else
-            state.set("error", nil)
-        end
-
-        if pendingCheck then
-            pendingCheck = false
-            checkUpdates()
-        end
-
-        noctalia.log(string.format(
-            "Update check: %d xbps, %d flatpak (%d total)",
-            xbpsCount, flatpakCount,
-            xbpsCount + flatpakCount
-        ))
+    local commands = {}
+    if #xbps_updates > 0 then
+        table.insert(commands, "sudo xbps-install -Su -y")
+    end
+    if #flatpak_updates > 0 then
+        table.insert(commands, "flatpak update -y")
     end
 
-    local safetyTimer = true
-    noctalia.runAsync("sleep 45", function()
-        if not safetyTimer then return end
-        safetyTimer = false
-        if isChecking then
-            noctalia.log("Safety timeout: forcing check completion")
-            table.insert(errors, "Check timed out")
-            aggregateResults()
-        end
-    end)
-
-    noctalia.runAsync("xbps-install -M 2>/dev/null", function(result)
+    local cmd = table.concat(commands, " && ")
+    noctalia.runAsync(cmd, function(result)
         if result.exitCode == 0 then
-            xbpsPackages = parseXbpsPackages(result.stdout)
-            xbpsCount = #xbpsPackages
-        elseif result.stdout ~= "" then
-            table.insert(errors, "xbps: " .. result.stdout)
-        end
-        completed += 1
-        if completed == expectedCount then
-            safetyTimer = false
-            aggregateResults()
+            notify("System Updates", "All packages updated successfully")
+            checkUpdates()
+        else
+            notifyError("Failed to update packages")
         end
     end)
-
-    if flatpakInstalled then
-        noctalia.runAsync("flatpak remote-ls --updates --columns=application,version", function(result)
-            if result.exitCode == 0 then
-                flatpakPackages = parsePackages(result.stdout)
-                flatpakCount = #flatpakPackages
-            elseif result.exitCode ~= 0 and result.stderr ~= nil and result.stderr ~= "" then
-                table.insert(errors, "flatpak: " .. result.stderr)
-            end
-            completed += 1
-            if completed == expectedCount then
-                safetyTimer = false
-                aggregateResults()
-            end
-        end)
-    end
 end
 
-function update()
-    noctalia.setUpdateInterval(checkInterval)
-    if isUpdating and os.time() - updateStartTime > UPDATE_WAIT * 2 then
-        noctalia.log("Safety: resetting stuck update state")
-        isUpdating = false
+xbps_available = findBin("xbps-install")
+flatpak_installed = detectFlatpak()
+
+state.set("xbps_available", xbps_available)
+state.set("flatpak_installed", flatpak_installed)
+
+settings.watch("auto_check", function(value) auto_check = value end)
+settings.watch("check_interval", function(value) check_interval = value end)
+settings.watch("flatpak_enabled", function(value)
+    flatpak_enabled = value
+    flatpak_installed = detectFlatpak()
+    state.set("flatpak_installed", flatpak_installed)
+end)
+
+state.watch("command", function(cmd)
+    if cmd == "check" then
+        checkUpdates()
+    elseif cmd == "update_all" then
+        updateAll()
     end
+end)
+
+if auto_check then
     checkUpdates()
 end

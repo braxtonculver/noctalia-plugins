@@ -1,6 +1,6 @@
 id = "braxtonculver/opensuse-update"
 name = "openSUSE Updater"
-version = "1.1.0"
+version = "3.0.0"
 plugin_api = 3
 author = "braxtonculver"
 license = "MIT"
@@ -8,6 +8,13 @@ dependencies = []
 tags = ["system", "utility", "opensuse", "zypper", "indicator"]
 icon = "refresh"
 description = "Automatic system updater for openSUSE (zypper) and flatpak with update count display."
+
+[[setting]]
+key = "auto_check"
+type = "bool"
+label_key = "settings.auto_check.label"
+description_key = "settings.auto_check.description"
+default = true
 
 [[setting]]
 key = "check_interval"
@@ -19,30 +26,16 @@ min = 5
 max = 1440
 
 [[setting]]
-key = "enable_flatpak"
+key = "flatpak_enabled"
 type = "bool"
-label_key = "settings.enable_flatpak.label"
-description_key = "settings.enable_flatpak.description"
+label_key = "settings.flatpak_enabled.label"
+description_key = "settings.flatpak_enabled.description"
 default = true
 
 [[widget]]
 id = "status"
 entry = "widget.luau"
 label = "openSUSE Updater"
-
-  [[widget.setting]]
-  key = "show_count"
-  type = "bool"
-  label_key = "settings.show_count.label"
-  description_key = "settings.show_count.description"
-  default = true
-
-  [[widget.setting]]
-  key = "icon_glyph"
-  type = "glyph"
-  label_key = "settings.icon_glyph.label"
-  description_key = "settings.icon_glyph.description"
-  default = "refresh"
 
 [[service]]
 id = "checker"

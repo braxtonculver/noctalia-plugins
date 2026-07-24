@@ -22,21 +22,17 @@
     "not_installed": "Not installed"
   },
   "settings": {
+    "auto_check": {
+      "label": "Auto check",
+      "description": "Automatically check for updates on startup."
+    },
     "check_interval": {
       "label": "Check interval (minutes)",
       "description": "How often to check for updates automatically, in minutes. Default 360 (6 hours)."
     },
-    "enable_flatpak": {
+    "flatpak_enabled": {
       "label": "Enable Flatpak updates",
       "description": "Check for Flatpak package updates. Requires flatpak."
-    },
-    "show_count": {
-      "label": "Show update count",
-      "description": "Display the number of available updates next to the icon."
-    },
-    "icon_glyph": {
-      "label": "Widget icon",
-      "description": "The icon glyph displayed in the bar widget."
     }
   }
 }

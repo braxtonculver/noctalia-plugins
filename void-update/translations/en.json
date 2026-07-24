@@ -16,6 +16,7 @@
     "packages_count": "{count} packages",
     "update": "Update",
     "update_all": "Update All",
+    "update_with": "Update with",
     "search": "Search packages...",
     "no_results": "No packages match your search",
     "show_all": "Show all",

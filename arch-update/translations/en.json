@@ -10,7 +10,6 @@
     "last_checked": "Last checked: {time}",
     "never_checked": "Never checked",
     "refresh": "Refresh",
-    "sync_database": "Sync DB",
     "checking": "Checking...",
     "up_to_date": "All packages up to date",
     "updates_available": "updates available",

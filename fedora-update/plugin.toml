@@ -1,11 +1,11 @@
 id = "braxtonculver/fedora-update"
 name = "Fedora Updater"
-version = "1.1.0"
+version = "3.0.0"
 plugin_api = 3
 author = "braxtonculver"
 license = "MIT"
 dependencies = []
-tags = ["system", "utility", "fedora", "dnf", "indicator"]
+tags = ["system", "utility", "fedora", "indicator"]
 icon = "refresh"
 description = "Automatic system updater for Fedora (dnf) and flatpak with update count display."
 

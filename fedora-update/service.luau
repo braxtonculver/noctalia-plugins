@@ -1,27 +1,23 @@
---!nonstrict
--- Background service: checks for system updates across dnf and flatpak.
--- Runs all checks in parallel with a safety timeout to prevent
--- the UI from ever getting stuck on "Checking...".
---
--- Safety: all update commands run in a terminal via runInTerminal, giving the
--- user full visibility and control. No commands run silently.
-
+local noctalia = noctalia
 local state = noctalia.state
-local checkInterval = (noctalia.getConfig("check_interval") or 360) * 60000
-local enableFlatpak = noctalia.getConfig("enable_flatpak")
-if enableFlatpak == nil then enableFlatpak = true end
-local UPDATE_WAIT = 30
+local settings = noctalia.settings
 
-local isChecking = false
-local isUpdating = false
-local pendingCheck = false
-local updateStartTime = 0
+local auto_check = settings.get("auto_check", true)
+local check_interval = settings.get("check_interval", 3600)
+local flatpak_enabled = settings.get("flatpak_enabled", true)
+
+local flatpak_installed = false
+local dnf_updates = {}
+local flatpak_updates = {}
+local checking = false
+local last_check = 0
 
 local function findBin(name)
     if noctalia.commandExists(name) then
         return true
     end
-    for _, dir in ipairs({ "/usr/bin", "/usr/local/bin", "/usr/sbin", "/usr/local/sbin" }) do
+    local dirs = { "/usr/bin", "/usr/local/bin", "/usr/sbin", "/usr/local/sbin", "/usr/lib", "/usr/lib64", "/usr/libexec" }
+    for _, dir in ipairs(dirs) do
         if noctalia.fileExists(dir .. "/" .. name) then
             return true
         end
@@ -30,210 +26,118 @@ local function findBin(name)
 end
 
 local function detectFlatpak()
-    if not enableFlatpak then
-        return false
+    if not flatpak_enabled then return false end
+    if findBin("flatpak") then
+        return true
     end
-    return findBin("flatpak")
-end
-
-local flatpakInstalled = detectFlatpak()
-
-state.set("dnf_count", 0)
-state.set("flatpak_count", 0)
-state.set("total_count", 0)
-state.set("dnf_packages", {})
-state.set("flatpak_packages", {})
-state.set("last_checked", nil)
-state.set("checking", false)
-state.set("error", nil)
-state.set("flatpak_installed", flatpakInstalled)
-
-local lastRefreshRequest = 0
-state.watch("refresh_request", function(timestamp)
-    if timestamp ~= nil and timestamp ~= lastRefreshRequest then
-        lastRefreshRequest = timestamp
-        checkUpdates()
+    if noctalia.fileExists("/usr/bin/flatpak") then
+        return true
     end
-end)
-
-local lastUpdateCmd = ""
-local lastUpdateTs = 0
-state.watch("update_request", function(value)
-    if value == nil then return end
-    local cmd = value.command or ""
-    local ts = value.ts or 0
-    if cmd == lastUpdateCmd and ts == lastUpdateTs then return end
-    lastUpdateCmd = cmd
-    lastUpdateTs = ts
-    if cmd == "update_dnf" then
-        if isUpdating then return end
-        isUpdating = true
-        updateStartTime = os.time()
-        noctalia.runInTerminal("sudo dnf upgrade -y")
-        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
-            isUpdating = false
-            checkUpdates()
-        end)
-    elseif cmd == "update_flatpak" then
-        if isUpdating or not flatpakInstalled then return end
-        isUpdating = true
-        updateStartTime = os.time()
-        noctalia.runInTerminal("flatpak update -y")
-        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
-            isUpdating = false
-            checkUpdates()
-        end)
-    elseif cmd == "update_all" then
-        if isUpdating then return end
-        isUpdating = true
-        updateStartTime = os.time()
-        local commands = { "sudo dnf upgrade -y" }
-        if flatpakInstalled then
-            table.insert(commands, "flatpak update -y")
-        end
-        noctalia.runInTerminal(table.concat(commands, " ; "))
-        noctalia.runAsync("sleep " .. UPDATE_WAIT, function()
-            isUpdating = false
-            checkUpdates()
-        end)
-    end
-end)
-
-local function parseDnfPackages(text)
-    local packages = {}
-    if text == nil or text == "" then
-        return packages
-    end
-    for line in text:gmatch("[^\n]+") do
-        line = noctalia.string.trim(line)
-        if line ~= "" and not line:match("^Last ") and not line:match("^Obsoleting") and not line:match("^Upgrading") and not line:match("^Dependencies") and not line:match("^Installing") and not line:match("^%-") and not line:match("^Name") then
-            local name, version = line:match("^(%S+)%s+(%S+)")
-            if name and version then
-                table.insert(packages, { name = name, version = version })
-            end
-        end
-    end
-    return packages
-end
-
-local function parsePackages(text)
-    local packages = {}
-    if text == nil or text == "" then
-        return packages
-    end
-    for line in text:gmatch("[^\n]+") do
-        line = noctalia.string.trim(line)
-        if line ~= "" then
-            local name, version = line:match("^(%S+)%s+(%S+)")
-            if name then
-                table.insert(packages, { name = name, version = version })
-            end
-        end
-    end
-    return packages
-end
-
-function checkUpdates()
-    if isChecking then
-        pendingCheck = true
-        return
-    end
-    isChecking = true
-    state.set("checking", true)
-    state.set("error", nil)
-
-    local dnfCount = 0
-    local flatpakCount = 0
-    local dnfPackages = {}
-    local flatpakPackages = {}
-    local errors = {}
-
-    local expectedCount = 1
-    if flatpakInstalled then expectedCount += 1 end
-
-    local completed = 0
-    local aggregated = false
-
-    local function aggregateResults()
-        if aggregated then return end
-        aggregated = true
-        state.set("dnf_count", dnfCount)
-        state.set("flatpak_count", flatpakCount)
-        state.set("total_count", dnfCount + flatpakCount)
-        state.set("dnf_packages", dnfPackages)
-        state.set("flatpak_packages", flatpakPackages)
-        state.set("last_checked", os.time())
-        state.set("checking", false)
-        isChecking = false
-
-        if #errors > 0 then
-            state.set("error", table.concat(errors, "; "))
-        else
-            state.set("error", nil)
-        end
-
-        if pendingCheck then
-            pendingCheck = false
-            checkUpdates()
-        end
-
-        noctalia.log(string.format(
-            "Update check: %d dnf, %d flatpak (%d total)",
-            dnfCount, flatpakCount,
-            dnfCount + flatpakCount
-        ))
-    end
-
-    local safetyTimer = true
-    noctalia.runAsync("sleep 60", function()
-        if not safetyTimer then return end
-        safetyTimer = false
-        if isChecking then
-            noctalia.log("Safety timeout: forcing check completion")
-            table.insert(errors, "Check timed out")
-            aggregateResults()
+    noctalia.runAsync("flatpak --version", function(result)
+        if result.exitCode == 0 then
+            flatpak_installed = true
+            state.set("flatpak_installed", true)
+            noctalia.log("Flatpak detected: " .. noctalia.string.trim(result.stdout))
         end
     end)
+    return false
+end
+
+local function parseDnfUpdates(output)
+    local updates = {}
+    for line in output:gmatch("[^\n]+") do
+        local name, old_ver, new_ver, repo = line:match("^(%S+)%s+(%S+)%s+(%S+)%s+(%S+)")
+        if name then
+            table.insert(updates, { name = name, version = new_ver })
+        end
+    end
+    return updates
+end
+
+local function parseFlatpakUpdates(output)
+    local updates = {}
+    for line in output:gmatch("[^\n]+") do
+        local name, version = line:match("(.+)\t(.+)")
+        if name then
+            table.insert(updates, { name = name, version = version })
+        end
+    end
+    return updates
+end
+
+local function publishState()
+    last_check = os.time()
+    state.set("checking", false)
+    state.set("last_check", last_check)
+    state.set("dnf_updates", dnf_updates)
+    state.set("flatpak_updates", flatpak_updates)
+    checking = false
+end
+
+local function checkUpdates()
+    if checking then return end
+    checking = true
+    state.set("checking", true)
+
+    dnf_updates = {}
+    flatpak_updates = {}
 
     noctalia.runAsync("dnf check-update 2>/dev/null", function(result)
-        if result.exitCode == 0 then
-            dnfPackages = {}
-            dnfCount = 0
-        elseif result.exitCode == 100 then
-            dnfPackages = parseDnfPackages(result.stdout)
-            dnfCount = #dnfPackages
-        elseif result.stdout ~= "" then
-            table.insert(errors, "dnf: " .. result.stdout:sub(1, 200))
+        if result.exitCode == 100 and result.stdout ~= "" then
+            dnf_updates = parseDnfUpdates(result.stdout)
         end
-        completed += 1
-        if completed == expectedCount then
-            safetyTimer = false
-            aggregateResults()
+
+        if flatpak_installed then
+            noctalia.runAsync("flatpak remote-ls --updates --columns=application,version 2>/dev/null", function(flatpakResult)
+                if flatpakResult.exitCode == 0 and flatpakResult.stdout ~= "" then
+                    flatpak_updates = parseFlatpakUpdates(flatpakResult.stdout)
+                end
+                publishState()
+            end)
+        else
+            publishState()
         end
     end)
-
-    if flatpakInstalled then
-        noctalia.runAsync("flatpak remote-ls --updates --columns=application,version", function(result)
-            if result.exitCode == 0 then
-                flatpakPackages = parsePackages(result.stdout)
-                flatpakCount = #flatpakPackages
-            elseif result.exitCode ~= 0 and result.stderr ~= nil and result.stderr ~= "" then
-                table.insert(errors, "flatpak: " .. result.stderr)
-            end
-            completed += 1
-            if completed == expectedCount then
-                safetyTimer = false
-                aggregateResults()
-            end
-        end)
-    end
 end
 
-function update()
-    noctalia.setUpdateInterval(checkInterval)
-    if isUpdating and os.time() - updateStartTime > UPDATE_WAIT * 2 then
-        noctalia.log("Safety: resetting stuck update state")
-        isUpdating = false
+local function updateAll()
+    if checking then return end
+    local has_dnf = #dnf_updates > 0
+    local has_flatpak = #flatpak_updates > 0
+    if not has_dnf and not has_flatpak then return end
+
+    local commands = {}
+    if has_dnf then
+        table.insert(commands, "sudo dnf upgrade -y")
     end
+    if has_flatpak then
+        table.insert(commands, "flatpak update -y")
+    end
+
+    local cmd = table.concat(commands, " && ")
+    noctalia.runAsync(cmd, function(result)
+        checkUpdates()
+    end)
+end
+
+flatpak_installed = detectFlatpak()
+state.set("flatpak_installed", flatpak_installed)
+
+settings.watch("check_interval", function(value) check_interval = value end)
+settings.watch("flatpak_enabled", function(value)
+    flatpak_enabled = value
+    flatpak_installed = detectFlatpak()
+    state.set("flatpak_installed", flatpak_installed)
+end)
+
+state.watch("command", function(cmd)
+    if cmd == "check" then
+        checkUpdates()
+    elseif cmd == "update_all" then
+        updateAll()
+    end
+end)
+
+if auto_check then
     checkUpdates()
 end

@@ -1,477 +1,556 @@
---!nonstrict
--- Updates panel: shows per-manager breakdowns (pacman, AUR, flatpak) with
--- packages listed under their respective sections and individual update buttons.
--- Communicates with the service through shared state.
-
+local noctalia = noctalia
 local state = noctalia.state
+local panel = noctalia.panel
 
-local totalCount = 0
-local pacmanCount = 0
-local aurCount = 0
-local flatpakCount = 0
-local pacmanPackages = {}
-local aurPackages = {}
-local flatpakPackages = {}
-local lastChecked = nil
-local isChecking = false
-local errorMsg = nil
-local aurHelper = state.get("aur_helper")
-local flatpakInstalled = state.get("flatpak_installed")
-local enableAur = noctalia.getConfig("enable_aur")
-if enableAur == nil then enableAur = true end
-local enableFlatpak = noctalia.getConfig("enable_flatpak")
-if enableFlatpak == nil then enableFlatpak = true end
-local showAll = false
-local searchText = ""
-local render -- forward declaration
+local pacman_updates = {}
+local aur_updates = {}
+local flatpak_updates = {}
+local pacman_available = state.get("pacman_available") or false
+local aur_available = state.get("aur_available") or false
+local flatpak_installed = state.get("flatpak_installed") or false
+local checking = state.get("checking") or false
+local last_check = state.get("last_check") or 0
+local search_query = ""
+local show_all_pacman = false
+local show_all_aur = false
+local show_all_flatpak = false
 
-state.watch("total_count", function(v)
-    totalCount = v or 0
-    render()
-end)
-state.watch("pacman_count", function(v)
-    pacmanCount = v or 0
-    render()
-end)
-state.watch("aur_count", function(v)
-    aurCount = v or 0
-    render()
-end)
-state.watch("flatpak_count", function(v)
-    flatpakCount = v or 0
-    render()
-end)
-state.watch("pacman_packages", function(v)
-    pacmanPackages = v or {}
-    render()
-end)
-state.watch("aur_packages", function(v)
-    aurPackages = v or {}
-    render()
-end)
-state.watch("flatpak_packages", function(v)
-    flatpakPackages = v or {}
-    render()
-end)
-state.watch("last_checked", function(v)
-    lastChecked = v
-    render()
-end)
-state.watch("checking", function(v)
-    isChecking = v or false
-    render()
-end)
-state.watch("error", function(v)
-    errorMsg = v
-    render()
-end)
-state.watch("flatpak_installed", function(v)
-    flatpakInstalled = v or false
-    render()
-end)
-
-local function formatTime(unixTime)
-    if unixTime == nil then
-        return noctalia.tr("panel.never_checked")
-    end
-    return noctalia.tr("panel.last_checked", { time = noctalia.formatTime("%H:%M", unixTime) })
+local function onCloseClicked()
+    panel.close()
 end
 
-local function searchMatch(text)
-    if searchText == "" then
-        return true
-    end
-    return string.find(text:lower(), searchText:lower(), 1, true) ~= nil
+local function onCheckClicked()
+    state.set("command", "check")
 end
 
-local function buildPackageRows(packages, sourceLabel)
-    local elements = {}
-    local maxDisplay = showAll and #packages or math.min(50, #packages)
-    local visibleCount = 0
+local function onUpdateAllClicked()
+    state.set("command", "update_all")
+end
 
-    for i = 1, maxDisplay do
-        local pkg = packages[i]
-        if searchMatch(pkg.name) then
-            visibleCount += 1
-            table.insert(elements, ui.row({
-                key = sourceLabel .. "-" .. pkg.name,
-                paddingH = 10,
-                paddingV = 3,
-                radius = 4,
-                fill = "surface_container_low",
-            }, {
-                ui.label({
-                    text = pkg.name,
-                    fontSize = 11,
-                    color = "on_surface",
-                    flexGrow = 1,
-                    maxLines = 1,
-                }),
-                ui.label({
-                    text = pkg.version,
-                    fontSize = 10,
-                    color = "on_surface_variant",
-                }),
-            }))
+local function onSearchChanged(value)
+    search_query = value
+    render()
+end
+
+local function onToggleShowAllPacman()
+    show_all_pacman = not show_all_pacman
+    render()
+end
+
+local function onToggleShowAllAur()
+    show_all_aur = not show_all_aur
+    render()
+end
+
+local function onToggleShowAllFlatpak()
+    show_all_flatpak = not show_all_flatpak
+    render()
+end
+
+local function formatTimestamp(ts)
+    if ts == 0 then return "Never" end
+    return noctalia.formatTime(ts, "%H:%M")
+end
+
+local function filterPackages(packages, query)
+    if query == "" then return packages end
+    local filtered = {}
+    local q = query:lower()
+    for _, pkg in ipairs(packages) do
+        if pkg.name:lower():find(q, 1, true) then
+            table.insert(filtered, pkg)
         end
     end
-
-    if not showAll and #packages > 50 then
-        table.insert(elements, ui.button({
-            text = noctalia.tr("panel.show_all"),
-            variant = "ghost",
-            onClick = "onShowAll",
-        }))
-    end
-
-    if visibleCount == 0 and searchText ~= "" then
-        table.insert(elements, ui.label({
-            text = noctalia.tr("panel.no_results"),
-            fontSize = 11,
-            color = "on_surface_variant",
-            paddingV = 4,
-        }))
-    end
-
-    return elements
+    return filtered
 end
 
-local function managerSection(title, count, glyph, color, hasHelper, disabledLabel, updateEvent, packages, sourceLabel)
-    local elements = {}
+local function getPacmanCount()
+    return #pacman_updates
+end
 
-    -- Section header row
-    table.insert(elements, ui.row({
+local function getAurCount()
+    return #aur_updates
+end
+
+local function getFlatpakCount()
+    return #flatpak_updates
+end
+
+local function getTotalCount()
+    return getPacmanCount() + getAurCount() + getFlatpakCount()
+end
+
+local function renderPacmanSection()
+    local count = getPacmanCount()
+    local has_updates = count > 0
+
+    local header = ui.row({
         align = "center",
         gap = 8,
+        fill = "horizontal",
     }, {
-        ui.glyph({
-            name = glyph,
-            size = 16,
-            color = color,
-        }),
+        ui.glyph({ name = "package", size = 16, color = "primary" }),
         ui.label({
-            text = title,
+            text = "Pacman",
+            fontSize = 13,
             fontWeight = "bold",
             color = "on_surface",
             flexGrow = 1,
         }),
         ui.label({
-            text = count > 0
-                and noctalia.tr("panel.packages_count", { count = tostring(count) })
-                or (disabledLabel or noctalia.tr("panel.up_to_date")),
-            fontSize = 11,
-            color = count > 0 and "on_surface_variant" or "success",
+            text = tostring(count) .. " update" .. (count ~= 1 and "s" or ""),
+            fontSize = 12,
+            color = has_updates and "primary" or "success",
+            fontWeight = "medium",
         }),
-    }))
+    })
 
-    -- Package list (only if there are packages)
-    if #packages > 0 then
-        for _, row in ipairs(buildPackageRows(packages, sourceLabel)) do
-            table.insert(elements, row)
+    local items = {}
+    if has_updates then
+        local display_updates = pacman_updates
+        if not show_all_pacman and #display_updates > 10 then
+            local sliced = {}
+            for i = 1, 10 do
+                table.insert(sliced, display_updates[i])
+            end
+            display_updates = sliced
         end
+
+        for _, pkg in ipairs(display_updates) do
+            table.insert(items, ui.row({
+                fill = "horizontal",
+                paddingH = 8,
+                paddingV = 4,
+                radius = 6,
+                align = "center",
+                gap = 8,
+            }, {
+                ui.label({
+                    text = pkg.name,
+                    fontSize = 12,
+                    color = "on_surface",
+                    flexGrow = 1,
+                    ellipsize = "end",
+                }),
+                ui.label({
+                    text = pkg.version,
+                    fontSize = 11,
+                    color = "on_surface_variant",
+                }),
+            }))
+        end
+
+        if #pacman_updates > 10 and not show_all_pacman then
+            table.insert(items, ui.button({
+                label = "Show all " .. #pacman_updates .. " packages",
+                onClick = "onToggleShowAllPacman",
+                size = "sm",
+                fill = "horizontal",
+            }))
+        end
+    else
+        table.insert(items, ui.label({
+            text = "All packages up to date",
+            fontSize = 12,
+            color = "success",
+            alignment = "center",
+            paddingH = 8,
+            paddingV = 8,
+        }))
     end
 
-    -- Update button (only if helper exists and there are updates)
-    if hasHelper and count > 0 then
-        table.insert(elements, ui.button({
-            text = noctalia.tr("panel.update"),
-            variant = "primary",
-            controlSize = "sm",
-            onClick = updateEvent,
-        }))
-    elseif not hasHelper then
-        table.insert(elements, ui.button({
-            text = disabledLabel or "N/A",
-            variant = "ghost",
-            controlSize = "sm",
-            enabled = false,
-        }))
+    local children = { header }
+    for _, item in ipairs(items) do
+        table.insert(children, item)
     end
 
     return ui.column({
-        gap = 8,
+        gap = 6,
+        fill = "horizontal",
         paddingH = 12,
         paddingV = 10,
-        fill = "surface_container",
-        radius = 12,
-    }, elements)
+        radius = 10,
+        fill_color = "surface",
+    }, children)
+end
+
+local function renderAurSection()
+    if not aur_available then return nil end
+
+    local count = getAurCount()
+    local has_updates = count > 0
+
+    local header = ui.row({
+        align = "center",
+        gap = 8,
+        fill = "horizontal",
+    }, {
+        ui.glyph({ name = "building", size = 16, color = "tertiary" }),
+        ui.label({
+            text = "AUR",
+            fontSize = 13,
+            fontWeight = "bold",
+            color = "on_surface",
+            flexGrow = 1,
+        }),
+        ui.label({
+            text = tostring(count) .. " update" .. (count ~= 1 and "s" or ""),
+            fontSize = 12,
+            color = has_updates and "tertiary" or "success",
+            fontWeight = "medium",
+        }),
+    })
+
+    local items = {}
+    if has_updates then
+        local display_updates = aur_updates
+        if not show_all_aur and #display_updates > 10 then
+            local sliced = {}
+            for i = 1, 10 do
+                table.insert(sliced, display_updates[i])
+            end
+            display_updates = sliced
+        end
+
+        for _, pkg in ipairs(display_updates) do
+            table.insert(items, ui.row({
+                fill = "horizontal",
+                paddingH = 8,
+                paddingV = 4,
+                radius = 6,
+                align = "center",
+                gap = 8,
+            }, {
+                ui.label({
+                    text = pkg.name,
+                    fontSize = 12,
+                    color = "on_surface",
+                    flexGrow = 1,
+                    ellipsize = "end",
+                }),
+                ui.label({
+                    text = pkg.version,
+                    fontSize = 11,
+                    color = "on_surface_variant",
+                }),
+            }))
+        end
+
+        if #aur_updates > 10 and not show_all_aur then
+            table.insert(items, ui.button({
+                label = "Show all " .. #aur_updates .. " packages",
+                onClick = "onToggleShowAllAur",
+                size = "sm",
+                fill = "horizontal",
+            }))
+        end
+    else
+        table.insert(items, ui.label({
+            text = "All packages up to date",
+            fontSize = 12,
+            color = "success",
+            alignment = "center",
+            paddingH = 8,
+            paddingV = 8,
+        }))
+    end
+
+    local children = { header }
+    for _, item in ipairs(items) do
+        table.insert(children, item)
+    end
+
+    return ui.column({
+        gap = 6,
+        fill = "horizontal",
+        paddingH = 12,
+        paddingV = 10,
+        radius = 10,
+        fill_color = "surface",
+    }, children)
+end
+
+local function renderFlatpakSection()
+    if not flatpak_installed then return nil end
+
+    local count = getFlatpakCount()
+    local has_updates = count > 0
+
+    local header = ui.row({
+        align = "center",
+        gap = 8,
+        fill = "horizontal",
+    }, {
+        ui.glyph({ name = "box", size = 16, color = "info" }),
+        ui.label({
+            text = "Flatpak",
+            fontSize = 13,
+            fontWeight = "bold",
+            color = "on_surface",
+            flexGrow = 1,
+        }),
+        ui.label({
+            text = tostring(count) .. " update" .. (count ~= 1 and "s" or ""),
+            fontSize = 12,
+            color = has_updates and "info" or "success",
+            fontWeight = "medium",
+        }),
+    })
+
+    local items = {}
+    if has_updates then
+        local display_updates = flatpak_updates
+        if not show_all_flatpak and #display_updates > 10 then
+            local sliced = {}
+            for i = 1, 10 do
+                table.insert(sliced, display_updates[i])
+            end
+            display_updates = sliced
+        end
+
+        for _, pkg in ipairs(display_updates) do
+            table.insert(items, ui.row({
+                fill = "horizontal",
+                paddingH = 8,
+                paddingV = 4,
+                radius = 6,
+                align = "center",
+                gap = 8,
+            }, {
+                ui.label({
+                    text = pkg.name,
+                    fontSize = 12,
+                    color = "on_surface",
+                    flexGrow = 1,
+                    ellipsize = "end",
+                }),
+                ui.label({
+                    text = pkg.version,
+                    fontSize = 11,
+                    color = "on_surface_variant",
+                }),
+            }))
+        end
+
+        if #flatpak_updates > 10 and not show_all_flatpak then
+            table.insert(items, ui.button({
+                label = "Show all " .. #flatpak_updates .. " packages",
+                onClick = "onToggleShowAllFlatpak",
+                size = "sm",
+                fill = "horizontal",
+            }))
+        end
+    else
+        table.insert(items, ui.label({
+            text = "All packages up to date",
+            fontSize = 12,
+            color = "success",
+            alignment = "center",
+            paddingH = 8,
+            paddingV = 8,
+        }))
+    end
+
+    local children = { header }
+    for _, item in ipairs(items) do
+        table.insert(children, item)
+    end
+
+    return ui.column({
+        gap = 6,
+        fill = "horizontal",
+        paddingH = 12,
+        paddingV = 10,
+        radius = 10,
+        fill_color = "surface",
+    }, children)
 end
 
 render = function()
+    local totalCount = getTotalCount()
     local hasUpdates = totalCount > 0
 
-    -- Status section
-    local statusSection
-    if isChecking then
-        statusSection = ui.column({
+    local statusHero
+    if checking then
+        statusHero = ui.column({
             gap = 10,
-            paddingH = 20,
-            paddingV = 16,
-            fill = "primary/0.1",
+            paddingH = 24,
+            paddingV = 20,
+            fill = "primary/0.08",
             radius = 16,
             align = "center",
         }, {
-            ui.glyph({
-                name = "loader",
-                size = 24,
-                color = "primary",
-            }),
-            ui.label({
-                text = noctalia.tr("panel.checking"),
-                color = "primary",
-                fontWeight = "medium",
-            }),
+            ui.glyph({ name = "loader", size = 28, color = "primary" }),
+            ui.label({ text = "Checking for updates...", color = "primary", fontWeight = "medium" }),
         })
     elseif hasUpdates then
-        statusSection = ui.column({
-            gap = 8,
-            paddingH = 20,
-            paddingV = 16,
-            fill = "error/0.08",
+        statusHero = ui.column({
+            gap = 6,
+            paddingH = 24,
+            paddingV = 20,
+            fill = "error/0.06",
             radius = 16,
             align = "center",
         }, {
             ui.label({
                 text = tostring(totalCount),
-                fontSize = 36,
+                fontSize = 42,
                 fontWeight = "bold",
                 color = "error",
             }),
             ui.label({
-                text = noctalia.tr("panel.updates_available"),
+                text = "update" .. (totalCount ~= 1 and "s" or "") .. " available",
                 color = "on_surface_variant",
+                fontSize = 13,
             }),
         })
     else
-        statusSection = ui.column({
+        statusHero = ui.column({
             gap = 8,
-            paddingH = 20,
-            paddingV = 16,
-            fill = "success/0.08",
+            paddingH = 24,
+            paddingV = 20,
+            fill = "success/0.06",
             radius = 16,
             align = "center",
         }, {
-            ui.glyph({
-                name = "circle-check",
-                size = 28,
-                color = "success",
-            }),
+            ui.glyph({ name = "circle-check", size = 32, color = "success" }),
             ui.label({
-                text = noctalia.tr("panel.up_to_date"),
+                text = "System is up to date",
                 color = "success",
                 fontWeight = "medium",
+                fontSize = 13,
             }),
         })
     end
 
-    -- Manager sections (each with its own package list)
-    local managerChildren = {}
-
-    -- Pacman section (always shown)
-    table.insert(managerChildren, managerSection(
-        "Pacman",
-        pacmanCount,
-        "package",
-        "tertiary",
-        true,
-        nil,
-        "onUpdatePacman",
-        pacmanPackages,
-        "pacman"
-    ))
-
-    -- AUR section (only if enabled)
-    if enableAur then
-        local helperLabel = aurHelper
-            and noctalia.tr("panel.update_with") .. " " .. aurHelper
-            or noctalia.tr("panel.no_helper")
-        table.insert(managerChildren, managerSection(
-            "AUR" .. (aurHelper and (" (" .. aurHelper .. ")") or ""),
-            aurCount,
-            "building-community",
-            "primary",
-            aurHelper ~= nil,
-            helperLabel,
-            "onUpdateAur",
-            aurPackages,
-            "aur"
-        ))
+    local searchInput = nil
+    if hasUpdates then
+        searchInput = ui.textinput({
+            placeholder = "Search packages...",
+            value = search_query,
+            onChange = "onSearchChanged",
+            fill = "horizontal",
+            clearable = true,
+            glyph = "search",
+        })
     end
 
-    -- Flatpak section (only if enabled)
-    if enableFlatpak then
-        table.insert(managerChildren, managerSection(
-            "Flatpak",
-            flatpakCount,
-            "brand-flutter",
-            "secondary",
-            flatpakInstalled,
-            noctalia.tr("panel.not_installed"),
-            "onUpdateFlatpak",
-            flatpakPackages,
-            "flatpak"
-        ))
+    local pacmanSection = renderPacmanSection()
+    local aurSection = renderAurSection()
+    local flatpakSection = renderFlatpakSection()
+
+    local sections = {}
+    table.insert(sections, pacmanSection)
+    if aurSection then table.insert(sections, aurSection) end
+    if flatpakSection then table.insert(sections, flatpakSection) end
+
+    local body_children = {
+        statusHero,
+    }
+
+    if searchInput then
+        table.insert(body_children, searchInput)
     end
 
-    local managerSections = ui.column({ gap = 8 }, managerChildren)
+    for _, section in ipairs(sections) do
+        table.insert(body_children, section)
+    end
 
-    -- Error section
-    local errorSection = nil
-    if errorMsg and errorMsg ~= "" then
-        errorSection = ui.row({
-            paddingH = 12,
-            paddingV = 8,
-            fill = "error/0.1",
-            radius = 8,
+    local body = ui.column({
+        gap = 12,
+        flexGrow = 1,
+    }, body_children)
+
+    local footer = ui.row({
+        gap = 8,
+        fill = "horizontal",
+        align = "center",
+    }, {
+        ui.label({
+            text = "Last checked: " .. formatTimestamp(last_check),
+            fontSize = 11,
+            color = "on_surface_variant",
+            flexGrow = 1,
+        }),
+        ui.button({
+            label = "Check for Updates",
+            onClick = "onCheckClicked",
+            size = "sm",
+            variant = "tonal",
+        }),
+        ui.button({
+            label = "Update All",
+            onClick = "onUpdateAllClicked",
+            size = "sm",
+            variant = "primary",
+        }),
+    })
+
+    panel.render(ui.column({
+        flexGrow = 1,
+        gap = 16,
+        padding = 16,
+    }, {
+        ui.row({
             align = "center",
             gap = 8,
+            fill = "horizontal",
         }, {
-            ui.glyph({
-                name = "alert-triangle",
-                size = 14,
-                color = "error",
-            }),
+            ui.glyph({ name = "refresh-cw", size = 18, color = "primary" }),
             ui.label({
-                text = errorMsg,
-                fontSize = 11,
-                color = "error",
-                flexGrow = 1,
-                maxLines = 2,
-            }),
-        })
-    end
-
-    -- Search input (only if there are updates)
-    local searchSection = nil
-    if hasUpdates then
-        searchSection = ui.input({
-            key = "search",
-            placeholder = noctalia.tr("panel.search"),
-            controlSize = "sm",
-            onChange = "onSearchChanged",
-        })
-    end
-
-    -- Build scroll children (omit nil sections)
-    local scrollChildren = { statusSection }
-    if searchSection then
-        table.insert(scrollChildren, searchSection)
-    end
-    table.insert(scrollChildren, managerSections)
-    if errorSection then
-        table.insert(scrollChildren, errorSection)
-    end
-
-    -- Assemble the full panel
-    panel.render(ui.column({ flexGrow = 1, gap = 10 }, {
-        -- Header
-        ui.row({ align = "center", justify = "space_between", gap = 8 }, {
-            ui.label({
-                text = noctalia.tr("panel.title"),
+                text = "System Updates",
                 fontSize = 16,
                 fontWeight = "bold",
                 color = "on_surface",
                 flexGrow = 1,
             }),
-            ui.button({
-                text = isChecking and noctalia.tr("panel.checking") or noctalia.tr("panel.refresh"),
-                variant = "ghost",
-                controlSize = "sm",
-                onClick = "onRefreshClicked",
-            }),
-            ui.button({
-                text = noctalia.tr("panel.sync_database"),
-                variant = "ghost",
-                controlSize = "sm",
-                onClick = "onSyncDatabase",
-            }),
-            ui.button({ glyph = "close", onClick = "onCloseClicked" }),
+            ui.button({ glyph = "close", onClick = "onCloseClicked", size = "sm" }),
         }),
-
-        -- Scrollable body
-        ui.scroll({ flexGrow = 1, gap = 8 }, scrollChildren),
-
-        -- Footer
-        ui.row({ align = "center", justify = "space_between", gap = 8 }, {
-            ui.label({
-                text = formatTime(lastChecked),
-                fontSize = 10,
-                color = "on_surface_variant",
-                flexGrow = 1,
-            }),
-            ui.button({
-                text = hasUpdates
-                    and noctalia.tr("panel.update_all") .. " (" .. tostring(totalCount) .. ")"
-                    or noctalia.tr("panel.update_all"),
-                variant = hasUpdates and "primary" or "ghost",
-                onClick = "onUpdateAll",
-            }),
-        }),
+        ui.separator({}),
+        ui.scroll({ flexGrow = 1 }, { body }),
+        ui.separator({}),
+        footer,
     }))
 end
 
-function onOpen(_context)
-    totalCount = state.get("total_count") or 0
-    pacmanCount = state.get("pacman_count") or 0
-    aurCount = state.get("aur_count") or 0
-    flatpakCount = state.get("flatpak_count") or 0
-    pacmanPackages = state.get("pacman_packages") or {}
-    aurPackages = state.get("aur_packages") or {}
-    flatpakPackages = state.get("flatpak_packages") or {}
-    lastChecked = state.get("last_checked")
-    isChecking = state.get("checking") or false
-    errorMsg = state.get("error")
-    aurHelper = state.get("aur_helper")
-    flatpakInstalled = state.get("flatpak_installed")
-    enableAur = noctalia.getConfig("enable_aur")
-    if enableAur == nil then enableAur = true end
-    enableFlatpak = noctalia.getConfig("enable_flatpak")
-    if enableFlatpak == nil then enableFlatpak = true end
-    showAll = false
-    searchText = ""
+state.watch("checking", function(value)
+    checking = value or false
     render()
-end
+end)
 
-function onRefreshClicked()
-    isChecking = true
+state.watch("last_check", function(value)
+    last_check = value or 0
     render()
-    state.set("refresh_request", os.time())
-end
+end)
 
-function onSyncDatabase()
-    state.set("sync_request", os.time())
-end
-
-function onUpdatePacman()
-    state.set("update_request", { command = "update_pacman", ts = os.time() })
-end
-
-function onUpdateAur()
-    state.set("update_request", { command = "update_aur", ts = os.time() })
-end
-
-function onUpdateFlatpak()
-    state.set("update_request", { command = "update_flatpak", ts = os.time() })
-end
-
-function onUpdateAll()
-    state.set("update_request", { command = "update_all", ts = os.time() })
-end
-
-function onShowAll()
-    showAll = true
+state.watch("pacman_updates", function(value)
+    pacman_updates = value or {}
     render()
-end
+end)
 
-function onSearchChanged(value)
-    searchText = value or ""
+state.watch("aur_updates", function(value)
+    aur_updates = value or {}
     render()
-end
+end)
 
-function onCloseClicked()
-    panel.close()
-end
+state.watch("flatpak_updates", function(value)
+    flatpak_updates = value or {}
+    render()
+end)
 
-function onExit(_signal)
-    noctalia.log("Arch Updater panel shutting down")
-end
+state.watch("pacman_available", function(value)
+    pacman_available = value or false
+    render()
+end)
+
+state.watch("aur_available", function(value)
+    aur_available = value or false
+    render()
+end)
+
+state.watch("flatpak_installed", function(value)
+    flatpak_installed = value or false
+    render()
+end)
+
+render()
