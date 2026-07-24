@@ -1,10 +1,12 @@
-local noctalia = noctalia
-local state = noctalia.state
+--!nonstrict
+-- openSUSE system update checker service.
+-- Checks zypper and flatpak for available updates.
 
+local state = noctalia.state
 local settings = noctalia.settings
 
 local auto_check = settings.get("auto_check", true)
-local check_interval = settings.get("check_interval", 3600)
+local check_interval = settings.get("check_interval", 360)
 local flatpak_enabled = settings.get("flatpak_enabled", true)
 
 local zypper_available = false
@@ -15,14 +17,6 @@ local flatpak_updates = {}
 
 local checking = false
 local last_check = 0
-
-local function notify(title, message)
-    noctalia.notify(title, message)
-end
-
-local function notifyError(message)
-    noctalia.notify("Error", message)
-end
 
 local function findBin(name)
     if noctalia.commandExists(name) then
@@ -39,17 +33,12 @@ end
 
 local function detectFlatpak()
     if not flatpak_enabled then return false end
-    if findBin("flatpak") then
-        return true
-    end
-    if noctalia.fileExists("/usr/bin/flatpak") then
-        return true
-    end
+    if findBin("flatpak") then return true end
+    if noctalia.fileExists("/usr/bin/flatpak") then return true end
     noctalia.runAsync("flatpak --version", function(result)
         if result.exitCode == 0 then
             flatpak_installed = true
             state.set("flatpak_installed", true)
-            noctalia.log("Flatpak detected: " .. noctalia.string.trim(result.stdout))
         end
     end)
     return false
@@ -58,15 +47,9 @@ end
 local function parseZypperUpdates(output)
     local updates = {}
     for line in output:gmatch("[^\n]+") do
-        line = noctalia.string.trim(line)
-        if line ~= "" and not line:match("^Repository") and not line:match("^%-") and not line:match("^S ") and not line:match("^Status") then
-            local fields = {}
-            for field in line:gmatch("[^|]+") do
-                table.insert(fields, noctalia.string.trim(field))
-            end
-            if #fields >= 5 then
-                table.insert(updates, { name = fields[3], version = fields[5] })
-            end
+        local name, version = line:match("^(%S+)%s+|%s+%S+%s+|%s+(%S+)")
+        if name then
+            table.insert(updates, { name = name, version = version })
         end
     end
     return updates
@@ -83,10 +66,17 @@ local function parseFlatpakUpdates(output)
     return updates
 end
 
+local function publishState()
+    state.set("checking", checking)
+    state.set("last_check", last_check)
+    state.set("zypper_updates", zypper_updates)
+    state.set("flatpak_updates", flatpak_updates)
+end
+
 local function checkUpdates()
     if checking then return end
     checking = true
-    state.set("checking", true)
+    publishState()
 
     zypper_updates = {}
     flatpak_updates = {}
@@ -97,33 +87,26 @@ local function checkUpdates()
         end
 
         if flatpak_installed then
-            noctalia.runAsync("flatpak remote-ls --updates --columns=application,version 2>/dev/null", function(flatpakResult)
-                if flatpakResult.exitCode == 0 and flatpakResult.stdout ~= "" then
-                    flatpak_updates = parseFlatpakUpdates(flatpakResult.stdout)
+            noctalia.runAsync("flatpak remote-ls --updates --columns=application,version 2>/dev/null", function(fpResult)
+                if fpResult.exitCode == 0 and fpResult.stdout ~= "" then
+                    flatpak_updates = parseFlatpakUpdates(fpResult.stdout)
                 end
-
                 checking = false
                 last_check = os.time()
-                state.set("checking", false)
-                state.set("last_check", last_check)
-                state.set("zypper_updates", zypper_updates)
-                state.set("flatpak_updates", flatpak_updates)
+                publishState()
             end)
         else
             checking = false
             last_check = os.time()
-            state.set("checking", false)
-            state.set("last_check", last_check)
-            state.set("zypper_updates", zypper_updates)
+            publishState()
         end
     end)
 end
 
 local function updateAll()
     if checking then return end
-    local has_updates = #zypper_updates > 0 or #flatpak_updates > 0
-    if not has_updates then
-        notifyError("No updates available")
+    if #zypper_updates == 0 and #flatpak_updates == 0 then
+        noctalia.notifyError("No Updates", "Nothing to update")
         return
     end
 
@@ -135,15 +118,8 @@ local function updateAll()
         table.insert(commands, "flatpak update -y")
     end
 
-    local cmd = table.concat(commands, " && ")
-    noctalia.runAsync(cmd, function(result)
-        if result.exitCode == 0 then
-            notify("System Updates", "All packages updated successfully")
-            checkUpdates()
-        else
-            notifyError("Failed to update packages")
-        end
-    end)
+    noctalia.runInTerminal(table.concat(commands, " && "))
+    checkUpdates()
 end
 
 zypper_available = findBin("zypper")
@@ -152,8 +128,18 @@ flatpak_installed = detectFlatpak()
 state.set("zypper_available", zypper_available)
 state.set("flatpak_installed", flatpak_installed)
 
-settings.watch("auto_check", function(value) auto_check = value end)
-settings.watch("check_interval", function(value) check_interval = value end)
+settings.watch("auto_check", function(value)
+    auto_check = value
+    if auto_check then
+        noctalia.setUpdateInterval(check_interval * 60 * 1000)
+    end
+end)
+settings.watch("check_interval", function(value)
+    check_interval = value
+    if auto_check then
+        noctalia.setUpdateInterval(check_interval * 60 * 1000)
+    end
+end)
 settings.watch("flatpak_enabled", function(value)
     flatpak_enabled = value
     flatpak_installed = detectFlatpak()
@@ -169,5 +155,10 @@ state.watch("command", function(cmd)
 end)
 
 if auto_check then
+    noctalia.setUpdateInterval(check_interval * 60 * 1000)
+    checkUpdates()
+end
+
+function update()
     checkUpdates()
 end

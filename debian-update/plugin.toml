@@ -1,6 +1,6 @@
 id = "braxtonculver/debian-update"
 name = "Debian Updater"
-version = "3.0.0"
+version = "4.0.0"
 plugin_api = 3
 author = "braxtonculver"
 license = "MIT"

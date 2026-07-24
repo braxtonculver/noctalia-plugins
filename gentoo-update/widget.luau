@@ -1,51 +1,51 @@
-local noctalia = noctalia
-local state = noctalia.state
+--!nonstrict
+-- Gentoo updater bar widget.
+-- Shows update count badge, opens panel on click.
 
-local function render()
-    local checking = state.get("checking") or false
-    local portage_updates = state.get("portage_updates") or {}
-    local flatpak_updates = state.get("flatpak_updates") or {}
+local checking = false
+local portage_updates = {}
+local flatpak_updates = {}
 
-    local total = #portage_updates + #flatpak_updates
-    local has_updates = total > 0
-
-    local badge = ""
-    local color = "surface_variant"
-
-    if checking then
-        badge = "⟳"
-        color = "primary"
-    elseif has_updates then
-        badge = tostring(total)
-        color = "error"
-    else
-        badge = "✓"
-        color = "success"
-    end
-
-    local row_children = {}
-    if checking then
-        table.insert(row_children, ui.glyph({ name = "loader", size = 14, color = color }))
-    elseif has_updates then
-        table.insert(row_children, ui.glyph({ name = "refresh-cw", size = 14, color = color }))
-    end
-    table.insert(row_children, ui.label({ text = badge, color = color, fontSize = 12, fontWeight = "bold" }))
-
-    barWidget.render(
-        ui.row({
-            gap = 4,
-            paddingH = 8,
-            paddingV = 4,
-            radius = 8,
-            fill = color .. "/0.1",
-            mainAxis = "center",
-            crossAxis = "center",
-        }, row_children)
-    )
+local function getTotalCount()
+    return #portage_updates + #flatpak_updates
 end
 
-state.watch("checking", render)
-state.watch("portage_updates", render)
-state.watch("flatpak_updates", render)
+local function render()
+    local total = getTotalCount()
+    local has_updates = total > 0
 
-render()
+    if checking then
+        barWidget.setGlyph("loader")
+        barWidget.setText("...")
+    elseif has_updates then
+        barWidget.setGlyph("refresh-cw")
+        barWidget.setText(tostring(total))
+    else
+        barWidget.setGlyph("check")
+        barWidget.setText("")
+    end
+end
+
+noctalia.state.watch("checking", function(value)
+    checking = value or false
+    render()
+end)
+
+noctalia.state.watch("portage_updates", function(value)
+    portage_updates = value or {}
+    render()
+end)
+
+noctalia.state.watch("flatpak_updates", function(value)
+    flatpak_updates = value or {}
+    render()
+end)
+
+function update()
+    noctalia.setUpdateInterval(1000)
+    render()
+end
+
+function onClick()
+    noctalia.togglePanel("braxtonculver/gentoo-update:updates")
+end

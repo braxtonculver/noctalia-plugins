@@ -1,16 +1,16 @@
-local noctalia = noctalia
-local state = noctalia.state
+--!nonstrict
+-- Arch Linux system update checker service.
+-- Checks pacman, AUR helpers, and flatpak for available updates.
 
+local state = noctalia.state
 local settings = noctalia.settings
 
--- Settings
 local auto_check = settings.get("auto_check", true)
-local check_interval = settings.get("check_interval", 3600)
+local check_interval = settings.get("check_interval", 360)
 local aur_helper = settings.get("aur_helper", "paru")
 local aur_enabled = settings.get("aur_enabled", true)
 local flatpak_enabled = settings.get("flatpak_enabled", true)
 
--- State
 local pacman_available = false
 local aur_available = false
 local flatpak_installed = false
@@ -21,14 +21,6 @@ local flatpak_updates = {}
 
 local checking = false
 local last_check = 0
-
-local function notify(title, message)
-    noctalia.notify(title, message)
-end
-
-local function notifyError(message)
-    noctalia.notify("Error", message)
-end
 
 local function findBin(name)
     if noctalia.commandExists(name) then
@@ -45,34 +37,18 @@ end
 
 local function detectFlatpak()
     if not flatpak_enabled then return false end
-    if findBin("flatpak") then
-        return true
-    end
-    if noctalia.fileExists("/usr/bin/flatpak") then
-        return true
-    end
+    if findBin("flatpak") then return true end
+    if noctalia.fileExists("/usr/bin/flatpak") then return true end
     noctalia.runAsync("flatpak --version", function(result)
         if result.exitCode == 0 then
             flatpak_installed = true
             state.set("flatpak_installed", true)
-            noctalia.log("Flatpak detected: " .. noctalia.string.trim(result.stdout))
         end
     end)
     return false
 end
 
 local function parsePacmanUpdates(output)
-    local updates = {}
-    for line in output:gmatch("[^\n]+") do
-        local name, version = line:match("(.+)/(.+)")
-        if name then
-            table.insert(updates, { name = name, version = version })
-        end
-    end
-    return updates
-end
-
-local function parseAurUpdates(output)
     local updates = {}
     for line in output:gmatch("[^\n]+") do
         local name, version = line:match("(.+)/(.+)")
@@ -94,10 +70,18 @@ local function parseFlatpakUpdates(output)
     return updates
 end
 
+local function publishState()
+    state.set("checking", checking)
+    state.set("last_check", last_check)
+    state.set("pacman_updates", pacman_updates)
+    state.set("aur_updates", aur_updates)
+    state.set("flatpak_updates", flatpak_updates)
+end
+
 local function checkUpdates()
     if checking then return end
     checking = true
-    state.set("checking", true)
+    publishState()
 
     pacman_updates = {}
     aur_updates = {}
@@ -108,65 +92,40 @@ local function checkUpdates()
             pacman_updates = parsePacmanUpdates(result.stdout)
         end
 
-        if aur_enabled then
-            noctalia.runAsync(aur_helper .. " -Qua 2>/dev/null", function(aurResult)
-                if aurResult.exitCode == 0 then
-                    aur_updates = parseAurUpdates(aurResult.stdout)
-                end
-
-                if flatpak_installed then
-                    noctalia.runAsync("flatpak remote-ls --updates --columns=application,version 2>/dev/null", function(flatpakResult)
-                        if flatpakResult.exitCode == 0 and flatpakResult.stdout ~= "" then
-                            flatpak_updates = parseFlatpakUpdates(flatpakResult.stdout)
-                        end
-
-                        checking = false
-                        last_check = os.time()
-                        state.set("checking", false)
-                        state.set("last_check", last_check)
-                        state.set("pacman_updates", pacman_updates)
-                        state.set("aur_updates", aur_updates)
-                        state.set("flatpak_updates", flatpak_updates)
-                    end)
-                else
-                    checking = false
-                    last_check = os.time()
-                    state.set("checking", false)
-                    state.set("last_check", last_check)
-                    state.set("pacman_updates", pacman_updates)
-                    state.set("aur_updates", aur_updates)
-                end
-            end)
-        else
+        local function finishFlatpak()
             if flatpak_installed then
-                noctalia.runAsync("flatpak remote-ls --updates --columns=application,version 2>/dev/null", function(flatpakResult)
-                    if flatpakResult.exitCode == 0 and flatpakResult.stdout ~= "" then
-                        flatpak_updates = parseFlatpakUpdates(flatpakResult.stdout)
+                noctalia.runAsync("flatpak remote-ls --updates --columns=application,version 2>/dev/null", function(fpResult)
+                    if fpResult.exitCode == 0 and fpResult.stdout ~= "" then
+                        flatpak_updates = parseFlatpakUpdates(fpResult.stdout)
                     end
-
                     checking = false
                     last_check = os.time()
-                    state.set("checking", false)
-                    state.set("last_check", last_check)
-                    state.set("pacman_updates", pacman_updates)
-                    state.set("flatpak_updates", flatpak_updates)
+                    publishState()
                 end)
             else
                 checking = false
                 last_check = os.time()
-                state.set("checking", false)
-                state.set("last_check", last_check)
-                state.set("pacman_updates", pacman_updates)
+                publishState()
             end
+        end
+
+        if aur_enabled then
+            noctalia.runAsync(aur_helper .. " -Qua 2>/dev/null", function(aurResult)
+                if aurResult.exitCode == 0 then
+                    aur_updates = parsePacmanUpdates(aurResult.stdout)
+                end
+                finishFlatpak()
+            end)
+        else
+            finishFlatpak()
         end
     end)
 end
 
 local function updateAll()
     if checking then return end
-    local has_updates = #pacman_updates > 0 or #aur_updates > 0 or #flatpak_updates > 0
-    if not has_updates then
-        notifyError("No updates available")
+    if #pacman_updates == 0 and #aur_updates == 0 and #flatpak_updates == 0 then
+        noctalia.notifyError("No Updates", "Nothing to update")
         return
     end
 
@@ -181,15 +140,8 @@ local function updateAll()
         table.insert(commands, "flatpak update -y")
     end
 
-    local cmd = table.concat(commands, " && ")
-    noctalia.runAsync(cmd, function(result)
-        if result.exitCode == 0 then
-            notify("System Updates", "All packages updated successfully")
-            checkUpdates()
-        else
-            notifyError("Failed to update packages")
-        end
-    end)
+    noctalia.runInTerminal(table.concat(commands, " && "))
+    checkUpdates()
 end
 
 pacman_available = findBin("pacman")
@@ -200,9 +152,23 @@ state.set("pacman_available", pacman_available)
 state.set("aur_available", aur_available)
 state.set("flatpak_installed", flatpak_installed)
 
-settings.watch("auto_check", function(value) auto_check = value end)
-settings.watch("check_interval", function(value) check_interval = value end)
-settings.watch("aur_helper", function(value) aur_helper = value end)
+settings.watch("auto_check", function(value)
+    auto_check = value
+    if auto_check then
+        noctalia.setUpdateInterval(check_interval * 60 * 1000)
+    end
+end)
+settings.watch("check_interval", function(value)
+    check_interval = value
+    if auto_check then
+        noctalia.setUpdateInterval(check_interval * 60 * 1000)
+    end
+end)
+settings.watch("aur_helper", function(value)
+    aur_helper = value
+    aur_available = aur_enabled and findBin(aur_helper)
+    state.set("aur_available", aur_available)
+end)
 settings.watch("aur_enabled", function(value)
     aur_enabled = value
     aur_available = value and findBin(aur_helper)
@@ -223,5 +189,10 @@ state.watch("command", function(cmd)
 end)
 
 if auto_check then
+    noctalia.setUpdateInterval(check_interval * 60 * 1000)
+    checkUpdates()
+end
+
+function update()
     checkUpdates()
 end

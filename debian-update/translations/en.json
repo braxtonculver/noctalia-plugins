@@ -1,42 +1,10 @@
 {
-  "widget": {
-    "updates_available": "{count} updates",
-    "up_to_date": "Up to date",
-    "checking": "Checking...",
-    "error": "Check failed"
-  },
-  "panel": {
-    "title": "System Updates",
-    "last_checked": "Last checked: {time}",
-    "never_checked": "Never checked",
-    "refresh": "Refresh",
-    "checking": "Checking...",
-    "up_to_date": "All packages up to date",
-    "updates_available": "updates available",
-    "packages_count": "{count} packages",
-    "update": "Update",
-    "update_all": "Update All",
-    "search": "Search packages...",
-    "no_results": "No packages match your search",
-    "show_all": "Show all",
-    "not_installed": "Not installed"
-  },
-  "settings": {
-    "check_interval": {
-      "label": "Check interval (minutes)",
-      "description": "How often to check for updates automatically, in minutes. Default 360 (6 hours)."
-    },
-    "enable_flatpak": {
-      "label": "Enable Flatpak updates",
-      "description": "Check for Flatpak package updates. Requires flatpak."
-    },
-    "show_count": {
-      "label": "Show update count",
-      "description": "Display the number of available updates next to the icon."
-    },
-    "icon_glyph": {
-      "label": "Widget icon",
-      "description": "The icon glyph displayed in the bar widget."
-    }
-  }
+  "settings.check_interval.label": "Check interval (minutes)",
+  "settings.check_interval.description": "How often to check for updates automatically.",
+  "settings.enable_flatpak.label": "Enable Flatpak updates",
+  "settings.enable_flatpak.description": "Check for Flatpak package updates. Requires flatpak.",
+  "settings.show_count.label": "Show update count",
+  "settings.show_count.description": "Display the number of available updates next to the icon.",
+  "settings.icon_glyph.label": "Widget icon",
+  "settings.icon_glyph.description": "The icon glyph displayed in the bar widget."
 }
