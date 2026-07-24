@@ -106,8 +106,8 @@ local function parseDnfPackages(text)
     end
     for line in text:gmatch("[^\n]+") do
         line = noctalia.string.trim(line)
-        if line ~= "" and not line:match("^Last ") and not line:match("^Obsoleting") and not line:match("^Upgrading") and not line:match("^Dependencies") and not line:match("^Installing") and not line:match("^%-%-%-%-") and not line:match("^Name") then
-            local name, version = line:match("^(%S+)%s+%S+%s+(%S+)%s+%S+")
+        if line ~= "" and not line:match("^Last ") and not line:match("^Obsoleting") and not line:match("^Upgrading") and not line:match("^Dependencies") and not line:match("^Installing") and not line:match("^%-") and not line:match("^Name") then
+            local name, version = line:match("^(%S+)%s+(%S+)")
             if name and version then
                 table.insert(packages, { name = name, version = version })
             end

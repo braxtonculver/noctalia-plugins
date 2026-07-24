@@ -106,10 +106,13 @@ local function parseZypperPackages(text)
     end
     for line in text:gmatch("[^\n]+") do
         line = noctalia.string.trim(line)
-        if line ~= "" and not line:match("^Repository") and not line:match("^%-+%-%-%-") and not line:match("^S ") and not line:match("^Status") then
-            local name, version = line:match("^%S+%s+(%S+)%s+(%S+)%s+%S+")
-            if name and version then
-                table.insert(packages, { name = name, version = version })
+        if line ~= "" and not line:match("^Repository") and not line:match("^%-") and not line:match("^S ") and not line:match("^Status") then
+            local fields = {}
+            for field in line:gmatch("[^|]+") do
+                table.insert(fields, noctalia.string.trim(field))
+            end
+            if #fields >= 5 then
+                table.insert(packages, { name = fields[3], version = fields[5] })
             end
         end
     end

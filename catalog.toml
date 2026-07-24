@@ -3,7 +3,7 @@
 [[plugin]]
 id = "braxtonculver/arch-update"
 name = "Arch Updater"
-version = "2.4.0"
+version = "2.4.1"
 author = "braxtonculver"
 license = "MIT"
 icon = "refresh"
@@ -51,7 +51,7 @@ tags = ["system", "utility", "gentoo", "portage", "indicator"]
 [[plugin]]
 id = "braxtonculver/fedora-update"
 name = "Fedora Updater"
-version = "1.0.0"
+version = "1.0.1"
 author = "braxtonculver"
 license = "MIT"
 icon = "refresh"
@@ -63,7 +63,7 @@ tags = ["system", "utility", "fedora", "dnf", "indicator"]
 [[plugin]]
 id = "braxtonculver/opensuse-update"
 name = "openSUSE Updater"
-version = "1.0.0"
+version = "1.0.1"
 author = "braxtonculver"
 license = "MIT"
 icon = "refresh"

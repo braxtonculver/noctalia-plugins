@@ -17,7 +17,7 @@ Automatic system update checker and updater for Arch Linux. Monitors pacman, AUR
 
 ## Usage
 
-Add the `status` widget from the Add-widget picker. It shows a configurable icon glyph with an optional badge indicating the number of packages that have updates available. The count updates automatically on boot and every 5 minutes (configurable).
+Add the `status` widget from the Add-widget picker. It shows a configurable icon glyph with an optional badge indicating the number of packages that have updates available. The count updates automatically on boot and every 6 hours (configurable).
 
 Click the widget to open the updates panel.
 
@@ -51,7 +51,7 @@ Type in the search box to filter the package list by name in real time.
 
 | Setting | Type | Default | Description |
 | --- | --- | --- | --- |
-| `check_interval` | `int` | `300` | How often to check for updates automatically, in seconds. Minimum 30. |
+| `check_interval` | `int` | `360` | How often to check for updates automatically, in minutes. Minimum 5. |
 | `enable_aur` | `bool` | `true` | Check for AUR package updates. |
 | `aur_helper` | `select` | `auto` | Which AUR helper to use: auto-detect, yay, or paru. |
 | `enable_flatpak` | `bool` | `true` | Check for Flatpak package updates. |
