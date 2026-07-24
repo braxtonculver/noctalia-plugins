@@ -49,12 +49,23 @@ end
 
 local function detectFlatpak()
     if not enableFlatpak then
+        noctalia.log("Flatpak detection skipped: disabled in settings")
         return false
     end
     if findBin("flatpak") then
+        noctalia.log("Flatpak detected via commandExists/filesystem")
         return true
     end
-    noctalia.log("Flatpak binary not found in PATH or common directories")
+    noctalia.log("Flatpak not found via commandExists/filesystem, trying direct execution")
+    noctalia.runAsync("flatpak --version", function(result)
+        if result.exitCode == 0 then
+            flatpakInstalled = true
+            state.set("flatpak_installed", true)
+            noctalia.log("Flatpak detected via direct execution: " .. noctalia.string.trim(result.stdout))
+        else
+            noctalia.log("Flatpak not found via direct execution (exitCode=" .. tostring(result.exitCode) .. ")")
+        end
+    end)
     return false
 end
 
