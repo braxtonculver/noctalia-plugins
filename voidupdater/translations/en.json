@@ -1,0 +1,109 @@
+{
+  "action_check": "Check Updates",
+  "action_dismiss": "Dismiss",
+  "action_update": "Update",
+  "caption_checked": "checked {time}",
+  "caption_ignored": {
+    "one": "1 package ignored",
+    "other": "{count} packages ignored"
+  },
+  "err_check_failed": "xbps check failed, see the system log for details",
+  "err_check_timeout": "Timed out while checking for updates",
+  "err_flatpak_failed": "Flatpak check failed, see the system log for details",
+  "err_no_terminal": "No terminal emulator found, set one in the plugin settings",
+  "err_no_xbps": "xbps-install not found, check your PATH",
+  "err_no_xdg_open": "xdg-open not found, cannot open the package page",
+  "err_spawn": "Could not run xbps-install",
+  "hover_hint": "Hover a package for its full versions",
+  "launcher": {
+    "check_subtitle": "Check xbps and Flatpak for updates",
+    "update_subtitle": "Open a terminal and run the update"
+  },
+  "more_packages": "+{count} more",
+  "notify_updates": {
+    "one": "1 package to upgrade",
+    "other": "{count} packages to upgrade"
+  },
+  "reboot_recommended": "Reboot recommended, the running kernel is no longer installed",
+  "run": {
+    "press_key": "Press any key to close"
+  },
+  "settings": {
+    "assume_yes": {
+      "description": "Pass -y so package managers do not ask for confirmation. Off means you confirm each one in the terminal window.",
+      "label": "Answer yes automatically"
+    },
+    "auto_check_hours": {
+      "description": "Check for updates automatically every N hours. 0 (default) never checks on its own.",
+      "label": "Auto-check interval (hours)"
+    },
+    "check_cmd": {
+      "description": "Full override for the update-check command. Empty (default) uses 'xbps-install -Mun', a rootless in-memory repo sync that needs no prior 'sudo xbps-install -S'. A custom command must print one 'pkgver update ...' line per pending package.",
+      "label": "Custom check command"
+    },
+    "check_reboot_needed": {
+      "description": "Detect whether the currently running kernel's files are still on disk. When they are gone, a newer kernel was installed and a reboot is what switches you to it.",
+      "label": "Check if a reboot is needed"
+    },
+    "flatpak_enabled": {
+      "description": "Also check (and, on Update, run) 'flatpak update'. Ignored automatically when flatpak is not installed.",
+      "label": "Include Flatpak"
+    },
+    "glyph": {
+      "description": "The glyph shown for the widget on the bar.",
+      "label": "Bar glyph"
+    },
+    "hide_on_empty": {
+      "description": "Hide the widget entirely when there are no pending updates and no reboot recommendation. Off (default) always shows the glyph.",
+      "label": "Hide when there is nothing to show"
+    },
+    "ignore_packages": {
+      "description": "Package names to leave out of the count. On Update, pending xbps and Flatpak packages that are ignored are left at their current version.",
+      "label": "Ignore packages"
+    },
+    "notify_on_updates": {
+      "description": "Send a desktop notification when a check finds packages to upgrade.",
+      "label": "Notify when updates are found"
+    },
+    "show_count": {
+      "description": "Show the number of pending updates next to the bar glyph.",
+      "label": "Show the update count"
+    },
+    "terminal": {
+      "description": "Terminal command used for the update run, e.g. kitty or ghostty. Empty (default) uses Noctalia's terminal detection ($TERMINAL, then the common emulators).",
+      "label": "Terminal"
+    },
+    "update_cmd": {
+      "description": "Full override for the command run in the terminal on Update. Empty (default) builds it from the ignore list, Flatpak and 'Answer yes' settings above.",
+      "label": "Custom update command"
+    }
+  },
+  "source": {
+    "flatpak": "Flatpak",
+    "xbps": "Xbps"
+  },
+  "status_checking": "Checking for updates…",
+  "status_checking_step": "Checking {step}…",
+  "status_clean": "System is up to date",
+  "status_error": "Update check failed",
+  "status_idle": "Not checked yet",
+  "status_missing": "xbps-install not found, check your PATH",
+  "status_ready": {
+    "one": "1 package to upgrade",
+    "other": "{count} packages to upgrade"
+  },
+  "status_running": "Update running in a terminal…",
+  "tip_check": "Check for updates now",
+  "tip_close": "Close",
+  "tip_copy": "Copy name and versions",
+  "tip_open_page": "Open package page",
+  "tip_update": "Run the update in a terminal window",
+  "title": "Void Updater",
+  "tooltip_checked": "Checked",
+  "tooltip_hints": "click: panel · right: check now",
+  "tooltip_pending": "Pending",
+  "tooltip_reboot_key": "Reboot",
+  "tooltip_reboot_value": "recommended",
+  "tooltip_status": "Status",
+  "up_to_date": "Up to date: {sources}"
+}

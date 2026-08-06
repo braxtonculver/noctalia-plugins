@@ -1,0 +1,20 @@
+# Noctalia Plugins Catalog
+# Index of every plugin in this source. One [[plugin]] entry per plugin directory.
+#
+# This catalog is for OUR plugins. The EXAMPLES/ directory has its own catalog
+# for reference — see EXAMPLES/catalog.toml for the full example catalog.
+
+# ── Our Plugins ───────────────────────────────────────────────────────────────
+
+[[plugin]]
+id = "helmsman/void-updater"
+name = "Void Updater"
+version = "1.0.0"
+updated_at = 1785991502
+added_at = 1785991502
+author = "helmsman"
+license = "MIT"
+icon = "package"
+description = "Check xbps and Flatpak for updates from the bar, get a reboot heads-up, then upgrade from a terminal."
+plugin_api = 9
+tags = ["void", "system", "utility", "bar", "panel", "service", "launcher"]
