@@ -16,5 +16,6 @@ author = "helmsman"
 license = "MIT"
 icon = "package"
 description = "Check xbps and Flatpak for updates from the bar, get a reboot heads-up, then upgrade from a terminal."
+deprecated = false
 plugin_api = 9
 tags = ["void", "system", "utility", "bar", "panel", "service", "launcher"]
